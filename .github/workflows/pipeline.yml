@@ -1,0 +1,46 @@
+name: Pylint and Flake8
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pylint flake8
+
+    # Run Pylint and Flake8 simultaneously using background tasks and redirect output to files.
+    - name: Run Pylint and Flake8
+      run: |
+        git ls-files '*.py' | xargs pylint > pylint.out &
+        flake8 --max-line-length=100 --max-complexity=10 $(git ls-files '*.py') > flake8.out &
+        wait
+
+    # Check the output files for errors and fail the pipeline if either of them is not empty.
+    - name: Check for errors
+      run: |
+        if [ -s pylint.out ] && [ -s flake8.out ]; then
+          echo "Pylint Errors:"
+          cat pylint.out
+          echo "Flake8 Errors:"
+          cat flake8.out
+          exit 1
+        elif [ -s pylint.out ]; then
+          echo "Pylint Errors:"
+          cat pylint.out
+          exit 1
+        elif [ -s flake8.out ]; then
+          echo "Flake8 Errors:"
+          cat flake8.out
+          exit 1
+        fi
