@@ -22,9 +22,12 @@ jobs:
     # Run Pylint and Flake8 simultaneously using background tasks and redirect output to files.
     - name: Run Pylint and Flake8
       run: |
-        git ls-files '*.py' | xargs pylint > pylint.out &
-        flake8 --max-line-length=100 --max-complexity=10 $(git ls-files '*.py') > flake8.out &
-        wait
+        python_files=$(git ls-files '*.py')
+        if [[ -n "$python_files" ]]; then
+          echo "$python_files" | xargs pylint > pylint.out &
+          flake8 --max-line-length=100 --max-complexity=10 $python_files > flake8.out &
+          wait
+        fi
 
     # Check the output files for errors and fail the pipeline if either of them is not empty.
     - name: Check for errors
