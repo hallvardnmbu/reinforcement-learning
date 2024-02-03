@@ -82,17 +82,19 @@ An Agent usually starts its learning process from scratch, and has to figure out
 
 OpenAIs work on mastering Minecraft had a goal for their Agent to obtain diamond tools, which "usually takes proficient humans over 20 minutes (24,000 actions)" (\textit{i.e.} extremely delayed feedback), and achieved this through sequential rewards \cite{Minecraft}. Likewise, if the feedback for a chess-Agent is the end result of a game, it is hard for the Agent to distinguish between good and bad moves throughout the game. Therefore, like OpenAIs solution, step-wise feedback (\textit{e.g.} piece captures and position evaluations in chess) is a good strategy for speeding up the learning process.
 
-\section*{Simple reinforcement learning task \hfill Cart-pole}
+\section*{Cart-pole environment}
 
 \begin{minipage}{.5\textwidth}
-  To gain a basic understanding of reinforcement learning, one can experiment with a "simple" problem. That is, a pole balancing on a cart which can move either to the left or the right. The goal is then to keep the pole upright by moving the cart. See image.
+  To gain a basic understanding of how reinforcement learning works one can experiment with a "simple" problem. The cart-pole problem being such, is an environment where an Agent has to balance a pole on top of a cart by moving it either to the left or the right — based on the current state of the environment.
 \end{minipage}%
 \begin{minipage}{.5\textwidth}
   \centering
   \includegraphics[width=.8\linewidth]{images/cart-pole.png}
 \end{minipage}
 
-The cart-pole environment is a part of the \textit{Gymnasium} (previously OpenAIs \textit{Gym}) package in python. This package contains a number of different virtual environments which can be imported and used to train and validate ones own reinforcement Agents. \cite{Gymnasium} \cite{Cart-pole} The environment is created and initialized by the following lines of python code:
+\vspace{0.2cm}
+
+The cart-pole environment is a part of the \textit{Gymnasium} package in python. This package contains a number of different virtual environments which can be imported and used to train and validate ones own reinforcement Agents. \cite{Gymnasium} \cite{Cart-pole} The environment is created and initialized by the following lines of python code:
 
 \vspace{0.2cm}
 
@@ -103,14 +105,8 @@ The cart-pole environment is a part of the \textit{Gymnasium} (previously OpenAI
     observation, info = environment.reset()
 \end{lstlisting}
 
-\subsection*{Environment description}
-\begin{leftbar}
-    The Agent controls the cart movement, \textit{i.e.}, by pushing it one way or another. The action is therefore binary, being $0$ or $1$ for respectively pushing the cart to the left or the right.
+The Agent controls the cart movement, \textit{i.e.}, by pushing it one way or another. The action is therefore binary, being $0$ or $1$ for respectively pushing the cart to the left or the right. By being able to observe the current state of the cart position, cart velocity, pole angle and pole angular velocity, the Agent has to choose an appropriate action. A reward is given for every time-step until the pole is no longer standing. The termination (or truncation) is determined by whether the pole angle is greater than $\pm 12 ^\circ$, the cart position is more than $\pm 2.4$ (too far away), or the episode length is greater than $500$ time-steps.
 
-    By being able to observe the current state of the cart position, cart velocity, pole angle and pole angular velocity, the Agent has to choose an action.
-
-    A reward is given for every time-step until the pole is no longer standing. The termination (or truncation) is determined by whether the pole angle is greater than $\pm 12 ^\circ$, the cart position is more than $\pm 2.4$ (too far away), or the episode length is greater than $500$ time-steps.
-\end{leftbar}
 \subsection*{The Agent}
 \begin{leftbar}
     The Agent is a neural network which takes the current observed state as input and returns the chosen action based on this.
@@ -134,13 +130,21 @@ The cart-pole environment is a part of the \textit{Gymnasium} (previously OpenAI
         def forward(self, x):
             _output = torch.tanh(self.layer_in(x))
             _output = torch.tanh(self.layer_hidden(_output))
-            output = torch.sigmoid(self.layer_out(_output))
+            output = self.layer_out(_output)
             
             return output
     \end{lstlisting}
 
     Note that this is an extremely simplified architecture, and that multiple hidden layers of variable units may be added, different activation functions used, etc.
-    
+
+\end{leftbar}
+\subsection*{Policy-based learning}
+\begin{leftbar}
+    h
+\end{leftbar}
+\subsection*{Value-based learning}
+\begin{leftbar}
+    h
 \end{leftbar}
 \subsection*{Training}
 \begin{leftbar}
