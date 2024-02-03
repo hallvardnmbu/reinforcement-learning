@@ -2,3 +2,5 @@ jupyter
 gymnasium
 matplotlib
 torch
+numpy
+imageio  # For creating gifs
