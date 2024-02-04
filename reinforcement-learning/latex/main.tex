@@ -76,25 +76,134 @@
 
 \section*{Motivation}
 
-Reinforcement learning is, in simple terms, a method where an artificial neural network (hereafter Agent) is placed in an environment with instant or delayed feedback in regard to the environment. This feedback is what makes the Agent able to learn. An example of this would be a chess-playing Agent whose input is an image of the board and output its next move in response to the input. The feedback the Agent receives could then be piece captures, position evaluations, etc. Within reinforcement learning the input to the Agent is usually referred to as the "state", and the output as the "action".
+Reinforcement learning is a powerful approach in machine learning where an artificial neural network (hereafter "Agent") learns to make decisions by interacting with an environment. The Agent receives feedback, either instantaneously or with a delay, based on its actions. This feedback, also known as the "reward", guides the Agent in learning the optimal actions to take in different situations or "states" within the environment.
 
-An Agent usually starts its learning process from scratch, and has to figure out which actions lead to positive feedback. Therefore, many iterations are needed to learn weights corresponding to mastering the task at hand. This process may in some cases be challenging, especially if the feedback is significantly delayed - which makes it hard for the Agent to determine which of the actions led to the positive feedback.
+Initially, an Agent starts with no knowledge of the environment and must learn through trial and error which actions lead to positive rewards. This learning process involves adjusting the weights of the Agent over many iterations to improve its performance on the task at hand. This process may in some cases be challenging, especially if the reward is significantly delayed - which makes it hard for the Agent to determine which of its actions led to the reward.
 
-OpenAIs work on mastering Minecraft had a goal for their Agent to obtain diamond tools, which "usually takes proficient humans over 20 minutes (24,000 actions)" (\textit{i.e.} extremely delayed feedback), and achieved this through sequential rewards \cite{Minecraft}. Likewise, if the feedback for a chess-Agent is the end result of a game, it is hard for the Agent to distinguish between good and bad moves throughout the game. Therefore, like OpenAIs solution, step-wise feedback (\textit{e.g.} piece captures and position evaluations in chess) is a good strategy for speeding up the learning process.
+An example of extremely delayed feedback is OpenAIs work on mastering Minecraft. They had a goal for their Agent to obtain diamond tools, which "usually takes proficient humans over 20 minutes (24,000 actions)". They achieved this through sequentially rewarding the Agent based on the progress it made, thus providing it with more immediate feedback based on its actions. \cite{Minecraft} 
+
+\section*{Reinforcement learning approaches}
+
+For any given reinforcement Agent, the goal is to select the action that will yield the highest reward. In order to best learn how to predict the correct actions, various approaches can be taken.
+
+\subsection*{Policy-based}
+\begin{leftbar}
+    The policy, $\pi(a|s)$, of an Agent is the probabilities of selecting the different possible actions $a$ given a state $s$. Therefore, finding the optimal policy $\pi^*(a|s)$ which maximizes the expected rewards given the current state is what the Agent leans to do. \cite{HF-approaches}
+
+    Performance of the Agent is optimized based on the probability distribution of the possible actions given a state with respect to its parameters. This optimization is based on the Agent's experience, in order to obtain a gradient which can then directly influence the parameters. \cite{HF-policy}
+\end{leftbar}
+\subsection*{Value-based}
+\begin{leftbar}
+    In contrast to a policy-based approach which outputs a probability distribution across the possible actions, the value-based approach outputs a predicted value of being at the given state. \cite{HF-value}
+
+    \textbf{\textcolor{red}{NOT DONE, ADD MORE HERE}}
+\end{leftbar}
+
+\section*{Agent architecture}
+
+Where Barto, Sutton and Anderson used "two types of neuronlike adaptive elements [...] an \textit{associative search element} (ASE) and the other an \textit{adaptive critic element} (ACE)" \cite{Neuronlike}, one can achieve near-perfect behavior with simpler architectures. A simple Agent skeleton is created using \textit{torch} as seen below. Here an arbitrary number of neurons per layer is used.
+
+\begin{lstlisting}
+import torch
+
+class Agent(torch.nn.Module):
+    def __init__(self, inputs=4, outputs=2):
+        super(Agent, self).__init__()
+
+        self.layer_in = torch.nn.Linear(inputs, 20)
+        self.layer_hidden = torch.nn.Linear(20, 80)
+        self.layer_out = torch.nn.Linear(80, outputs)
+
+    def forward(self, state):
+        _output = torch.relu(self.layer_in(state))
+        _output = torch.relu(self.layer_hidden(_output))
+        output = self.layer_out(_output)
+        
+        return output
+
+    def learn(self):
+        pass
+\end{lstlisting}
+
+Note that this is an extremely simplified architecture, and that multiple hidden layers of variable units may be added, different activation functions used, etc. The above architecture being quite small is therefore not intended to generalize across tasks, but instead act as a tailored Agent for the task in question.
+
+Also, when training the Agent, one has to determine how to calculate the gradient/loss. This can either be a generalized or tailored approach, depending on the use-case of the Agent. In the letter by Mnih \textit{et.al.} they chose an approach that generalized well across tasks; "a single algorithm that would be able to develop a wide range of competencies on a varied range of challenging tasks", as well as using a different Agent architecture \cite{Human-level}.
+
+\section*{Policy-based gradient approach}
+
+For a policy-based gradient approach, \textit{i.e.} an Agent that chooses an action based on the expected reward, some additions to the Agent class above is needed.
+
+\subsection*{Behaviour memory}
+\begin{leftbar}
+    The Agent's parameters are initialized as random values by default. These parameters are then updated once for every game the Agent plays (\textit{i.e.}, one full interaction with the environment). Therefore, it is necessary to store the behaviour and corresponding rewards of the Agent. Instead of saving the predicted actions, the logarithm of the probability of the chosen action is saved. The reason for this is that the logarithm of the Agent's confidence is needed for calculating the policy gradient.
+    
+    Obtaining the action and the logarithm of its probability is achieved by adding a wrapper to the forward pass given a state:
+    
+    \begin{lstlisting}
+    def action(self, state):
+        actions = torch.softmax(self(state), dim=-1)
+        
+        action = np.random.choice([0, 1], 1, p=actions.detach().numpy())[0]
+        logarithm = torch.log(actions[action])
+        
+        return action, logarithm
+    \end{lstlisting}
+    
+    Thus, the 'action' method returns the selected action and the logarithm of its probability, which are used in the learning process to update the Agent's parameters. In addition, the wrapper introduces some sense of exploration, by randomly sampling an action based on the Agent's policy.
+\end{leftbar}
+\subsection*{Learning}
+\begin{leftbar}
+    After every game the Agent plays (during the training-loop), its parameters are updated with respect to the policy gradient.
+    
+    In order for the Agent to best learn the optimal actions, it is common to evaluate the expected future rewards. Then, the Agent can adjust its predicted action probabilities (policy) so that this expected reward is maximized. This is done through the REINFORCE algorithm, which computes the policy gradient.
+
+    \subsubsection*{Expected future rewards}
+
+    The expected reward given an action is the sum of all future (discounted) rewards. This is achieved by reversely adding the observed reward and the discounted cumulative future rewards. The rewards are then standardized.
+    
+    \begin{lstlisting}
+    _reward = 0
+    for i in reversed(range(len(rewards))):
+        _reward = _reward * self.discount + rewards[i]
+        rewards[i] = _reward
+    rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-9)
+    \end{lstlisting}
+
+    \subsubsection*{Policy gradient}
+
+    The policy gradient is the gradient of the expected reward with respect to the action taken (policy). This is computed by multiplying the logarithm of the selected action probability (see `action` method) with the standardized expected reward — previously calculated. The overall gradient is then the sum of all these products.
+    
+    \begin{lstlisting}
+    gradient = torch.zeros_like(rewards)
+    for i, (logarithm, reward) in enumerate(zip(self.logarithms, rewards)):
+        gradient[i] = -logarithm * reward            
+    gradient = gradient.sum()
+    \end{lstlisting}
+    
+    A chosen optimizer is then used to backpropogate and update the Agent's parameters with the given gradient.
+\end{leftbar}
+
+The full Agent architecture can be found in the file 'reinforcement-learning/cart-pole/policy-based.ipynb'. Implementation based on Yoon's article \cite{REINFORCE}.
+\subsection*{Value-based learning}
+\begin{leftbar}
+    \textbf{\textcolor{red}{NOT YET IMPLEMENTED}}
+\end{leftbar}
 
 \section*{Cart-pole environment}
 
 \begin{minipage}{.5\textwidth}
-  To gain a basic understanding of how reinforcement learning works one can experiment with a "simple" problem. The cart-pole problem being such, is an environment where an Agent has to balance a pole on top of a cart by moving it either to the left or the right — based on the current state of the environment.
+  To gain a basic understanding of how reinforcement learning works one can experiment with a "simple" problem. The cart-pole problem being such, is an environment where the Agent has to balance a pole on top of a cart by moving it either to the left or the right — based on the current state of the environment. In this environment, the Agent gets immediate feedback from its actions.
 \end{minipage}%
 \begin{minipage}{.5\textwidth}
-  \centering
-  \includegraphics[width=.8\linewidth]{images/cart-pole.png}
+    \centering
+    \includegraphics[width=.8\linewidth]{images/cart-pole.png}
+    \captionof{figure}{Random observed environment state.}
+    \label{fig:cart-pole}
 \end{minipage}
 
 \vspace{0.2cm}
 
-The cart-pole environment is a part of the \textit{Gymnasium} package in python. This package contains a number of different virtual environments which can be imported and used to train and validate ones own reinforcement Agents. \cite{Gymnasium} \cite{Cart-pole} The environment is created and initialized by the following lines of python code:
+The cart-pole environment (seen in Figure \ref{fig:cart-pole}) is a part of the \textit{Gymnasium} package in python. This package contains a number of different virtual environments which can be imported and used to train and validate ones own reinforcement Agents. \cite{Gymnasium} \cite{Cart-pole} The environment is created and initialized by the following lines of python code:
 
 \vspace{0.2cm}
 
@@ -107,53 +216,25 @@ The cart-pole environment is a part of the \textit{Gymnasium} package in python.
 
 The Agent controls the cart movement, \textit{i.e.}, by pushing it one way or another. The action is therefore binary, being $0$ or $1$ for respectively pushing the cart to the left or the right. By being able to observe the current state of the cart position, cart velocity, pole angle and pole angular velocity, the Agent has to choose an appropriate action. A reward is given for every time-step until the pole is no longer standing. The termination (or truncation) is determined by whether the pole angle is greater than $\pm 12 ^\circ$, the cart position is more than $\pm 2.4$ (too far away), or the episode length is greater than $500$ time-steps.
 
-\subsection*{The Agent}
+\subsection*{Policy-based Agent}
 \begin{leftbar}
-    The Agent is a neural network which takes the current observed state as input and returns the chosen action based on this.
-
-    Where Barto, Sutton and Anderson used "two types of neuronlike adaptive elements [...] an \textit{associative search element} (ASE) and the other an \textit{adaptive critic element} (ACE)" \cite{Neuronlike}, we intend to first experiment with a single Agent.
-
-    A simple Agent can be created using \textit{torch} as seen below. Here, an arbitrary $64$ units are chosen for the hidden layer.
-
-    \begin{lstlisting}
-    import torch
-    import torch.nn as nn
-    
-    class Agent(nn.Module):
-        def __init__(self):
-            super(Agent, self).__init__()
-            
-            self.layer_in = nn.Linear(4, 64)
-            self.layer_hidden = nn.Linear(64, 64)
-            self.layer_out = nn.Linear(64, 1)
-            
-        def forward(self, x):
-            _output = torch.tanh(self.layer_in(x))
-            _output = torch.tanh(self.layer_hidden(_output))
-            output = self.layer_out(_output)
-            
-            return output
-    \end{lstlisting}
-
-    Note that this is an extremely simplified architecture, and that multiple hidden layers of variable units may be added, different activation functions used, etc.
-
+    Training the policy-based Agent by playing $10 000$ games led to a surprisingly good performance. The Agent was trained with the \textit{RMSprop} optimizer with a learning-rate of $0.00025$ and a reward discount of $0.99$. See Figure \ref{fig:policy-based-metrics} in the \hyperlink{sec:results}{Results} section.
 \end{leftbar}
-\subsection*{Policy-based learning}
+\subsection*{Value-based Agent}
 \begin{leftbar}
-    h
-\end{leftbar}
-\subsection*{Value-based learning}
-\begin{leftbar}
-    h
-\end{leftbar}
-\subsection*{Training}
-\begin{leftbar}
-    When training the Agent, one has to determine how to calculate the loss. This can either be a generalized or tailored approach, depending on the use-case of the Agent. In the letter by Mnih \textit{et.al.} they chose an approach that generalized well across tasks; "a single algorithm that would be able to develop a wide range of competencies on a varied range of challenging tasks" \cite{Human-level}. 
-    
-    However, in the case of the cart-pole problem, a simpler architecture and loss function is preferred. If the Agent is supposed to generalize well across tasks, a relatively large architecture is needed in order to handle all cases. This, in turn, leads to a significantly longer training-time.
+    \textbf{\textcolor{red}{NOT YET IMPLEMENTED}}
 \end{leftbar}
 
-%{\centering \includegraphics[width=8cm]{images/cart-pole.png} \par}
+\newpage
+\hypertarget{sec:results}{}
+\section*{Results}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=15cm]{images/policy-based-metrics.png}
+    \caption{Training of the policy-based Agent.}
+    \label{fig:policy-based-metrics}
+\end{figure}
 
 \newpage
 \printbibliography
