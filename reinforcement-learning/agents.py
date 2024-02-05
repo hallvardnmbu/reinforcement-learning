@@ -1,15 +1,17 @@
+"""Reinforcement learning Agents."""
+
 from abc import ABC, abstractmethod
 import numpy as np
 import torch
 
 
 class Agent(ABC, torch.nn.Module):
+    """Base Agent for reinforcement learning."""
     def __init__(self,
                  inputs=4,
                  outputs=2,
                  optimizer=torch.optim.RMSprop,
                  lr=0.00025,
-                 discount=0.99
                  ):
         """
         Base Agent for reinforcement learning.
@@ -24,12 +26,8 @@ class Agent(ABC, torch.nn.Module):
             Optimizer for the Agent to learn.
         lr : float, optional
             Learning rate for the optimizer.
-        discount : float, optional
-            Discount factor for future rewards.
-            --> 0: only consider immediate rewards
-            --> 1: consider all future rewards equally
         """
-        super(Agent, self).__init__()
+        super().__init__()
 
         # ARCHITECTURE
         # --------------------------------------------------
@@ -40,8 +38,12 @@ class Agent(ABC, torch.nn.Module):
 
         # LEARNING
         # --------------------------------------------------
+        # discount : float
+        #     Discount factor for future rewards.
+        #     --> 0: only consider immediate rewards
+        #     --> 1: consider all future rewards equally
 
-        self.discount = discount
+        self.discount = 0.99
         self.optimizer = optimizer(self.parameters(), lr=lr)
 
         self.memory = {}
@@ -80,7 +82,6 @@ class Agent(ABC, torch.nn.Module):
         action : int
             Selected action.
         """
-        pass
 
     @abstractmethod
     def learn(self):
@@ -92,28 +93,28 @@ class Agent(ABC, torch.nn.Module):
         float
             Either the gradient, loss, Q-value, etc.
         """
-        pass
 
     @abstractmethod
-    def memorize(self, *args):
+    def memorize(self, *args, **kwargs):
         """
         Abstract method for memorizing.
 
         Parameters
         ----------
         *args : list
-            Observation, action, reward, etc.
+            Positional arguments to memorize.
+        **kwargs : dict
+            Keyword arguments to memorize.
         """
-        pass
 
 
 class PolicyGradientAgent(Agent):
+    """Policy-based Agent for reinforcement learning."""
     def __init__(self,
                  inputs=4,
                  outputs=2,
                  optimizer=torch.optim.RMSprop,
                  lr=0.00025,
-                 discount=0.99
                  ):
         """
         Policy-based Agent for reinforcement learning.
@@ -128,12 +129,8 @@ class PolicyGradientAgent(Agent):
             Optimizer for the Agent to learn.
         lr : float, optional
             Learning rate for the optimizer.
-        discount : float, optional
-            Discount factor for future rewards.
-            --> 0: only consider immediate rewards
-            --> 1: consider all future rewards equally
         """
-        super().__init__(inputs, outputs, optimizer, lr, discount)
+        super().__init__(inputs, outputs, optimizer, lr)
 
         self.memory["logarithm"] = []
         self.memory["reward"] = []
@@ -219,16 +216,18 @@ class PolicyGradientAgent(Agent):
 
         return gradient.item()
 
-    def memorize(self, logarithm, reward):
+    def memorize(self, *args, **kwargs):
         """
         Append observation, action and reward to Agent memory.
 
         Parameters
         ----------
-        logarithm : torch.Tensor
-            Logarithm of the selected action probability.
-        reward : int
-            Reward from the chosen action.
+        *args : list
+            Positional arguments to memorize.
+        **kwargs : dict
+            Keyword arguments to memorize.
         """
+        logarithm, reward = args
+
         self.memory["logarithm"].append(logarithm)
         self.memory["reward"].append(reward)
