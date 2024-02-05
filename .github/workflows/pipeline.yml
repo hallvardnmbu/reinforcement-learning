@@ -17,14 +17,14 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pylint flake8 numpy torch
+        pip install pylint flake8
 
     # Run Pylint and Flake8 simultaneously using background tasks and redirect output to files.
     - name: Run Pylint and Flake8
       run: |
         python_files=$(git ls-files '*.py')
         if [[ -n "$python_files" ]]; then
-          echo "$python_files" | xargs pylint > pylint.out &
+          echo "$python_files" | xargs pylint --disable=E0401 > pylint.out &
           flake8 --max-line-length=100 --max-complexity=10 $python_files > flake8.out &
           wait
         fi
