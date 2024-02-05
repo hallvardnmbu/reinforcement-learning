@@ -32,13 +32,13 @@ jobs:
     # Check the output files for errors and fail the pipeline if either of them is not empty.
     - name: Check for errors
       run: |
-        if [ -s pylint.out ] && [ -s flake8.out ]; then
+        if ! grep -q "10.00/10" pylint.out && [ -s flake8.out ]; then
           echo "Pylint Errors:"
           cat pylint.out
           echo "Flake8 Errors:"
           cat flake8.out
           exit 1
-        elif [ -s pylint.out ]; then
+        elif ! grep -q "10.00/10" pylint.out; then
           echo "Pylint Errors:"
           cat pylint.out
           exit 1
