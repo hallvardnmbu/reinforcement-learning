@@ -60,6 +60,9 @@
 \renewcommand\thefootnote{\textcolor{black}{\arabic{footnote}}}
 \renewcommand{\footnoterule}{}
 
+\newcommand{\explain}[2]{\underbrace{#1}_{\parbox{\widthof{\ensuremath{#1}}}{\footnotesize\centering #2}}}
+\usepackage{nicematrix}
+
 \setlength{\parskip}{0.15cm}
 
 \begin{document}
@@ -99,28 +102,28 @@ For any given reinforcement Agent, the goal is to select the action that will yi
 
     The expected future reward $R_i$ for each time step $i \in [0, N]$ is calculated as:
 
-    \begin{equation*}
+    \begin{equation}
         \begin{split}
             R_i &= r_i + \gamma \times R_{i+1} \\
             R'_i &= (R_i - \mu_R) / \sigma_R
-        \end{split}
-    \end{equation*}
+        \end{split} \label{eq:reward}
+    \end{equation}
 
     where $r_i$ is the reward at time step $i$, and $\gamma$ is the discount factor. The expected future rewards are calculated backwards, as $R_{N+1} = 0 \Rightarrow R_N = r_N$. The expected rewards are then standardized.
 
     The policy gradient $G_i$ at each time step $i$ is calculated as
 
-    \begin{equation*}
+    \begin{equation}
         G_i = - \log(\pi(a_i|s_i)) \times R'_i
-    \end{equation*}
+    \end{equation}
 
     where $\pi(a_i|s_i)$ is the probability of taking action $a_i$ given state $s_i$, and $R'_i$ is the standardized expected future reward. The overall gradient is the sum of these individual gradients, $G = \sum_{i}^N G_i$.
 
     The weights of the Agent are updated using the calculated gradient $G$ and the learning rate $\eta$:
 
-    \begin{equation*}
+    \begin{equation}
         w_{new} = w_{old} - \eta \times \nabla_w G
-    \end{equation*}
+    \end{equation}
 
     where $\nabla_w G$ is the gradient of $G$ with respect to the weights $w$.
 
@@ -129,38 +132,95 @@ For any given reinforcement Agent, the goal is to select the action that will yi
 \begin{leftbar}
     In contrast to a policy-based approach which outputs a probability distribution across the possible actions, the value-based approach outputs a predicted value of being at the given state. \cite{HF-value}
 
+    \subsubsection*{PROCEDURE \hfill TRADITIONAL Q-LEARNING}
+
+    The Q-value is the expected future reward given an action. This is computed through the Bellman Equation, often referred to as the state-value function;
+
+    \begin{equation}
+        \begin{split}
+            V_\pi (s) &= E_\pi [R_t + \gamma R_{t+1} + \gamma \times V_\pi (S_{t+2}) | S_t = s] \\
+            &= E_\pi [G_t | S_t = s]
+        \end{split}
+    \end{equation}
+
+    where $V_\pi (s)$ is the value of state s under policy $\pi$, $E_\pi$ the expected: $R_t$ reward at time $t$ (see Equation \eqref{eq:reward}) plus $\gamma$ the discount factor times $V_\pi (S_{t+1})$, the value of the next state. This equals the expected future rewards, $G$. Given that the Agent is at state s. \cite{HF-bellman} \cite{Q-traditional}
+
+    Optimizing this equation. given a state and action, we get the Bellman Optimality Equation;
+
+    \begin{equation}
+        Q(s, a) = E[R_t + \gamma \times \max_a Q(S_{t+1}, a)]
+    \end{equation}
+
+    Which yields the optimal Q-value ($q^* = Q$) for the given state and action. \cite{Q-intro}
+
+    This equation can be further expressed as terms of a learning algorithm to be used by the computer:
+
+    \begin{equation}
+        \begin{split}
+            Q(S_t, A_t)\ =&\ Q(S_{t-1}, A_{t-1}) + \alpha \left[ R_{t+1} + \gamma \times \max_a Q(S_{t+1}, a) - Q(S_{t-1}, A_{t-1}) \right] \\ \\
+            \ =&\ Q(S_{t-1}, A_{t-1}) - \alpha \times Q(S_{t-1}, A_{t-1}) \\
+            \ & + \alpha \times \left[ R_{t+1} + \gamma \times \max_a Q(S_{t+1}, a) \right]
+        \end{split} \label{eq:q-star-traditional}
+    \end{equation}
+
+    where $\alpha$ is the learning rate of the program \cite{Q-deep}.
+
+    \subsubsection*{PROCEDURE \hfill DEEP Q-LEARNING}
+
+    In deep Q-learning, however, the optimal Q-value is approximated through an Agent. This is done by calculating a loss which is the difference between the predicted Q-value and target Q-value, and performing gradient descent with respect to this loss value. \cite{Q-deep}
+
+    Equation \eqref{eq:q-star-traditional} can therefore be modified slightly and rewritten as
+
+    \begin{equation*}
+        \text{loss} = \explain{R_{t+1} + \gamma \max_a Q(S_{t+1}, a | \theta)}{\text{Q-target}} - \explain{Q(R_t, a | \theta)}{\text{Q-previous}}
+    \end{equation*}
+
+    where $\theta$ are the Agent's parameters. These parameters are then updated through the optimizer with respect to the squared loss. \cite{Q-deep}
+
+    \subsubsection*{PROCEDURE \hfill DEEP Q-LEARNING WITH MEMORY REPLAY}
+
+    \cite{Q-deep}
     \textbf{\textcolor{red}{NOT DONE, ADD MORE HERE}}
+
+    \subsubsection*{PROCEDURE \hfill DOUBLE DEEP Q-LEARNING}
+
+    \cite{Q-deep}
+    \textbf{\textcolor{red}{NOT DONE, ADD MORE HERE}}
+
 \end{leftbar}
 
 \section*{AGENT ARCHITECTURE}
 
-Where Barto, Sutton and Anderson used "two types of neuronlike adaptive elements [...] an \textit{associative search element} (ASE) and the other an \textit{adaptive critic element} (ACE)" \cite{Neuronlike}, one can achieve near-perfect behavior with simpler architectures. A simple Agent skeleton is created using \textit{torch} as seen below. Here an arbitrary number of neurons per layer is used.
+Where Barto, Sutton and Anderson used "two types of neuronlike adaptive elements [...] an \textit{associative search element} (ASE) and the other an \textit{adaptive critic element} (ACE)" \cite{Neuronlike}, one can achieve near-perfect behavior with simpler architectures. A simple Agent skeleton is created using \textit{torch} as seen below. Docstrings are omitted, see \hyperlink{sec:code}{Code} for more thorough example.
 
 \begin{lstlisting}
-import torch
+class Agent(ABC, torch.nn.Module):
+    def __init__(self,
+                 network,
+                 optimizer,
+                 **other):
+        super().__init__()
 
-class Agent(torch.nn.Module):
-    def __init__(self, inputs=4, outputs=2):
-        super(Agent, self).__init__()
+        if "nodes" not in network:
+            network["nodes"] = [25]
 
-        self.layer_in = torch.nn.Linear(inputs, 20)
-        self.layer_hidden = torch.nn.Linear(20, 80)
-        self.layer_out = torch.nn.Linear(80, outputs)
+        for i, (_in, _out) in enumerate(zip([network["inputs"]]+network["nodes"],
+                                            network["nodes"]+[network["outputs"]])):
+            setattr(self, f"layer_{i}", torch.nn.Linear(_in, _out,
+                                                        dtype=torch.float32))
 
     def forward(self, state):
-        _output = torch.relu(self.layer_in(state))
-        _output = torch.relu(self.layer_hidden(_output))
-        output = self.layer_out(_output)
+        _output = torch.relu(self.layer_0(state))
+
+        for i in range(1, len(self._modules) - 1):
+            _output = torch.relu(getattr(self, f"layer_{i}")(_output))
+
+        output = getattr(self, f"layer_{len(self._modules)-1}")(_output)
 
         return output
-
-    def learn(self):
-        pass
 \end{lstlisting}
 
-Note that this is an extremely simplified architecture, and that multiple hidden layers of variable units may be added, different activation functions used, etc. The above architecture being quite small is therefore not intended to generalize across tasks, but instead act as a tailored Agent for the task in question.
-
-Also, when training the Agent, one has to determine how to calculate the gradient/loss. This can either be a generalized or tailored approach, depending on the use-case of the Agent. In the letter by Mnih \textit{et.al.} they chose an approach that generalized well across tasks; "a single algorithm that would be able to develop a wide range of competencies on a varied range of challenging tasks", as well as using a different Agent architecture \cite{Human-level}.
+Note that different activation functions may be used, etc. Also, when training the Agent, one has to determine how to calculate the gradient/loss. This can either be a generalized or tailored approach, depending on the use-case of the Agent. In the letter by Mnih \textit{et.al.} they chose an approach that generalized well across tasks; "a single algorithm that would be able to develop a wide range of competencies on a varied range of challenging tasks", as well as presumably using a different Agent architecture than the one seen above \cite{Human-level}.
 
 \subsection*{Implementation of policy-based gradient approach}
 \begin{leftbar}
@@ -239,7 +299,7 @@ The cart-pole environment (seen in Figure \ref{fig:cart-pole}) is a part of the 
 
 \begin{lstlisting}
     import gymnasium as gym
-    
+
     environment = gym.make('CartPole-v1', render_mode="rgb_array")
     observation, info = environment.reset()
 \end{lstlisting}
@@ -256,8 +316,11 @@ The Agent controls the cart movement, \textit{i.e.}, by pushing it one way or an
 \end{leftbar}
 
 \newpage
+\printbibliography
+
+\newpage
 \hypertarget{sec:results}{}
-\section*{Results}
+\section*{RESULTS}
 
 \begin{figure}[h]
     \centering
@@ -267,6 +330,7 @@ The Agent controls the cart movement, \textit{i.e.}, by pushing it one way or an
 \end{figure}
 
 \newpage
-\printbibliography
+\hypertarget{sec:code}{}
+\section*{CODE}
 
 \end{document}
