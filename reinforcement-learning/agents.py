@@ -1,6 +1,9 @@
 """Reinforcement learning Agents."""
 
+from collections import namedtuple, deque
 from abc import ABC, abstractmethod
+import random
+
 import numpy as np
 import torch
 
@@ -253,7 +256,7 @@ class PolicyGradientAgent(Agent):
 
     def memorize(self, *args):
         """
-        Append observation, action and reward to Agent memory.
+        Append state, action and reward to Agent memory.
 
         Parameters
         ----------
@@ -266,8 +269,11 @@ class PolicyGradientAgent(Agent):
         self.memory["reward"].append(reward)
 
 
-class ValueAgent(Agent):
+class ValueDeepQAgent(Agent):
     """Value-based Agent for reinforcement learning."""
+    Memory = namedtuple("Memory",
+                        ["state", "action", "new_state", "reward"])
+
     def __init__(self,
                  network,
                  optimizer,
@@ -304,21 +310,31 @@ class ValueAgent(Agent):
                 Discount factor for future rewards.
                 --> 0: only consider immediate rewards
                 --> 1: consider all future rewards equally
-            TODO: Add the others here.
+            alpha : float, optional
+                Learning rate for the Q-learning algorithm.
+            exploration_rate : float, optional
+                Initial exploration rate.
+            exploration_decay : float, optional
+                Exploration rate decay.
+            exploration_min : float, optional
+                Minimum exploration rate.
+            batch_size : int, optional
+                Number of samples to use for learning.
+            memory_size : int, optional
+                Maximum number of samples to store in memory.
         """
         super().__init__(network, optimizer, **other)
 
-        self.q_learning = {
-            "learning-rate": other.get("learning_rate", 0.1),
-            "exploration-rate": other.get("exploration_rate", 1),
-            "exploration-decay": other.get("exploration_decay", 0.001),
-            "exploration-min": other.get("exploration_min", 0.01),
+        self.alpha = other.get("alpha", 0.99)
+
+        self.explore = {
+            "rate": other.get("exploration_rate", 0.9),
+            "decay": other.get("exploration_decay", 0.999),
+            "min": other.get("exploration_min", 0.01),
         }
 
-        self.memory["state"] = []
-        self.memory["action"] = []
-        self.memory["q-value"] = []
-        self.memory["reward"] = []
+        self.batch_size = other.get("batch_size", 128)
+        self.memory = deque(maxlen=other.get("memory_size", 10000))
 
     def action(self, state):
         """
@@ -336,15 +352,16 @@ class ValueAgent(Agent):
         actions : torch.Tensor
             Q-values for each action.
         """
-        actions = self(state)
-        if np.random.rand() < self.q_learning["exploration-rate"]:
-            action = np.random.choice(range(next(reversed(self._modules.values())).out_features))
+        if np.random.rand() < self.explore["rate"]:
+            action = torch.tensor([np.random.choice(range(next(reversed(self._modules.values(
+
+            ))).out_features))], dtype=torch.long)
         else:
-            action = torch.argmax(actions).item()
+            action = self(state).max(1).indices.view(1, 1).clone().detach()
 
-        return action, actions
+        return action
 
-    def learn(self):
+    def learn(self, network):
         """
         Q-learning algorithm; a value-based method, with respect to the last game played.
 
@@ -356,13 +373,13 @@ class ValueAgent(Agent):
         -----
         In order for the Agent to best learn the optimal actions, it is common to evaluate the
         expected future rewards. Then, the Agent can adjust its predicted action values (
-        Q-values) so that this expected reward is maximized. This is done through the Q-learning algorithm, which computes the loss. Algorithm modified from:
-
-         https://towardsdatascience.com/q-learning-algorithm-from-explanation-to-implementation
-         -cdbeda2ea187
+        Q-values) so that this expected reward is maximized.
         """
-        rewards = torch.tensor(self.memory["reward"], dtype=torch.float32)
-        q_values = torch.stack(self.memory["q-value"])
+        if len(self.memory) < self.batch_size:
+            return 1
+
+        memory = random.sample(self.memory, min(self.batch_size, len(self.memory)))
+        batch = self.Memory(*zip(*memory))
 
         # EXPECTED FUTURE REWARDS
         # --------------------------------------------------
@@ -371,21 +388,24 @@ class ValueAgent(Agent):
         # rewards. The rewards are then standardized.
 
         _reward = 0
+        rewards = torch.cat(batch.reward)
         for i in reversed(range(len(rewards))):
             _reward = _reward * self.discount + rewards[i]
             rewards[i] = _reward
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-9)
+        # Standardization:
+        # rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-9)
+        # Normalization:
+        rewards = (rewards - rewards.min()) / (rewards.max() - rewards.min() + 1e-9)
 
         # Q-LEARNING
         # --------------------------------------------------
 
-        targets = torch.zeros_like(q_values)
-        for i in range(len(rewards)-1):
-            targets[i] = (rewards[i].item() +
-                          self.q_learning["learning-rate"] * torch.max(q_values[i+1]))
-        targets[-1] = rewards[-1].item()
+        actions = torch.cat([tensor.flatten() for tensor in batch.action])
+        action_values = self(torch.cat(batch.state)).gather(1, actions.view(-1, 1))
+        target_values = rewards + (self.alpha * network(torch.cat(batch.new_state)).max(1).values)
+        target_values[-1] = rewards[-1]
 
-        loss = torch.nn.functional.mse_loss(q_values, targets)
+        loss = torch.nn.functional.mse_loss(action_values, target_values.view(-1, 1))
 
         # BACKPROPAGATION
         # --------------------------------------------------
@@ -397,27 +417,18 @@ class ValueAgent(Agent):
         # EXPLORATION RATE DECAY
         # --------------------------------------------------
 
-        if self.q_learning["exploration-rate"] > self.q_learning["exploration-min"]:
-            self.q_learning["exploration-rate"] *= 1 - self.q_learning["exploration-decay"]
-        else:
-            self.q_learning["exploration-rate"] = self.q_learning["exploration-min"]
-
-        self.memory = {key: [] for key in self.memory.keys()}
+        self.explore["rate"] = max(self.explore["decay"] * self.explore["rate"],
+                                   self.explore["min"])
 
         return loss.item()
 
     def memorize(self, *args):
         """
-        Append observation, action, q-value and reward to Agent memory.
+        Append state, action, new_state and reward to Agent memory.
 
         Parameters
         ----------
         *args : list
             Positional arguments to memorize.
         """
-        state, action, q_value, reward = args
-
-        self.memory["state"].append(state)
-        self.memory["action"].append(action)
-        self.memory["q-value"].append(q_value)
-        self.memory["reward"].append(reward)
+        self.memory.append(self.Memory(*args))
