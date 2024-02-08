@@ -1,6 +1,9 @@
-jupyter
 gymnasium
-matplotlib
 torch
+pygame  # For visualising environment
+
+jupyter
+matplotlib
+
 numpy
 imageio  # For creating gifs
