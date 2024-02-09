@@ -50,7 +50,7 @@ class Agent(ABC, torch.nn.Module):
         super().__init__()
 
         # ARCHITECTURE
-        # --------------------------------------------------
+        # ------------------------------------------------------------------------------------------
 
         if "nodes" not in network:
             network["nodes"] = [25]
@@ -60,7 +60,9 @@ class Agent(ABC, torch.nn.Module):
             setattr(self, f"layer_{i}", torch.nn.Linear(_in, _out, dtype=torch.float32))
 
         # LEARNING
-        # --------------------------------------------------
+        # ------------------------------------------------------------------------------------------
+        # Default discount factor is 0.99, as suggested by the Google DeepMind paper "Human-level
+        # control through deep reinforcement learning" (2015).
 
         self.discount = other.get("discount", 0.99)
         self.optimizer = optimizer["optim"](self.parameters(), lr=optimizer["lr"],
@@ -198,7 +200,7 @@ class PolicyGradientAgent(Agent):
 
         return action, logarithm
 
-    def learn(self):
+    def learn(self, network=None):
         """
         REINFORCE algorithm; a policy-based gradient method, with respect to the last game played.
 
@@ -213,12 +215,16 @@ class PolicyGradientAgent(Agent):
         (policy) so that this expected reward is maximized. This is done through the REINFORCE
         algorithm, which computes the policy gradient. Algorithm modified from:
 
-         https://medium.com/@thechrisyoon/deriving-policy-gradients-and-implementing-reinforce-f887949bd63
+         https://medium.com/@thechrisyoon/deriving-policy-gradients-and-implementing-reinforce
+         -f887949bd63
         """
+        if network:
+            print("Reference network passed. This is not used in PolicyGradientAgent.")
+
         rewards = torch.tensor(self.memory["reward"], dtype=torch.float32)
 
         # EXPECTED FUTURE REWARDS
-        # --------------------------------------------------
+        # ------------------------------------------------------------------------------------------
         # The expected reward given an action is the sum of all future (discounted) rewards. This is
         # achieved by reversely adding the observed reward and the discounted cumulative future
         # rewards. The rewards are then standardized.
@@ -230,7 +236,7 @@ class PolicyGradientAgent(Agent):
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-9)
 
         # POLICY GRADIENT
-        # --------------------------------------------------
+        # ------------------------------------------------------------------------------------------
         # The policy gradient is the gradient of the expected reward with respect to the action
         # taken (policy). This is computed by multiplying the logarithm of the selected action
         # probability (see `action` method) with the standardized expected reward — previously
@@ -242,7 +248,7 @@ class PolicyGradientAgent(Agent):
         gradient = gradient.sum()
 
         # BACKPROPAGATION
-        # --------------------------------------------------
+        # ------------------------------------------------------------------------------------------
         # The gradient is then used to update the Agent's policy. This is done by backpropagating
         # with the optimizer using the gradient.
 
@@ -325,7 +331,7 @@ class ValueDeepQAgent(Agent):
         """
         super().__init__(network, optimizer, **other)
 
-        self.alpha = other.get("alpha", 0.99)
+        self.gamma = other.get("gamma", 0.95)
 
         self.explore = {
             "rate": other.get("exploration_rate", 0.9),
@@ -333,7 +339,7 @@ class ValueDeepQAgent(Agent):
             "min": other.get("exploration_min", 0.01),
         }
 
-        self.batch_size = other.get("batch_size", 128)
+        self.batch_size = other.get("batch_size", 32)
         self.memory = deque(maxlen=other.get("memory_size", 10000))
 
     def action(self, state):
@@ -353,15 +359,15 @@ class ValueDeepQAgent(Agent):
             Q-values for each action.
         """
         if np.random.rand() < self.explore["rate"]:
-            action = torch.tensor([np.random.choice(range(next(reversed(self._modules.values(
-
-            ))).out_features))], dtype=torch.long)
+            action = torch.tensor([np.random.choice(
+                range(next(reversed(self._modules.values())).out_features)
+            )], dtype=torch.long)
         else:
             action = self(state).max(1).indices.view(1, 1).clone().detach()
 
         return action
 
-    def learn(self, network):
+    def learn(self, network=None):
         """
         Q-learning algorithm; a value-based method, with respect to the last game played.
 
@@ -369,20 +375,25 @@ class ValueDeepQAgent(Agent):
         -------
         loss : float
 
+        Raises
+        ------
+        ValueError
+            If no reference network is passed.
+
         Notes
         -----
         In order for the Agent to best learn the optimal actions, it is common to evaluate the
-        expected future rewards. Then, the Agent can adjust its predicted action values (
-        Q-values) so that this expected reward is maximized.
+        expected future rewards. Then, the Agent can adjust its predicted action values so that
+        this expected reward is maximized.
         """
-        if len(self.memory) < self.batch_size:
-            return 1
+        if not network:
+            raise ValueError("No reference network passed.")
 
         memory = random.sample(self.memory, min(self.batch_size, len(self.memory)))
         batch = self.Memory(*zip(*memory))
 
         # EXPECTED FUTURE REWARDS
-        # --------------------------------------------------
+        # ------------------------------------------------------------------------------------------
         # The expected reward given an action is the sum of all future (discounted) rewards. This is
         # achieved by reversely adding the observed reward and the discounted cumulative future
         # rewards. The rewards are then standardized.
@@ -392,30 +403,45 @@ class ValueDeepQAgent(Agent):
         for i in reversed(range(len(rewards))):
             _reward = _reward * self.discount + rewards[i]
             rewards[i] = _reward
-        # Standardization:
-        # rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-9)
-        # Normalization:
-        rewards = (rewards - rewards.min()) / (rewards.max() - rewards.min() + 1e-9)
+        rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-9)).view(-1, 1)
 
         # Q-LEARNING
-        # --------------------------------------------------
+        # ------------------------------------------------------------------------------------------
+        # The Q-learning implementation is based on the letter by Google DeepMind ("Human-level
+        # control through deep reinforcement learning", 2015). Which is based on the Bellman
+        # equation for the optimal action-value function. The optimal action-value function is
+        #
+        #  Q*(s, a) = Q(s, a) + alpha * (r + gamma * max_a' Q'(s', a') - Q(s, a))
+        #
+        # where Q*(s, a) is the optimal action-value function, Q(s, a) is the current
+        # action-value, Q'(s', a') is the approximated action-value, alpha is the learning rate,
+        # r is the expected reward and gamma is the discount factor.
+        #
+        # DeepMind further simplifies this equation to:
+        #
+        #  Q*(s, a) = r + gamma * max_a' Q'(s', a')
+        #
+        # where Q' is a copy of the Agent, which is updated every X steps.
 
         actions = torch.cat([tensor.flatten() for tensor in batch.action])
-        action_values = self(torch.cat(batch.state)).gather(1, actions.view(-1, 1))
-        target_values = rewards + (self.alpha * network(torch.cat(batch.new_state)).max(1).values)
-        target_values[-1] = rewards[-1]
 
-        loss = torch.nn.functional.mse_loss(action_values, target_values.view(-1, 1))
+        actual = self(torch.cat(batch.state)).gather(1, actions.view(-1, 1))
+
+        optimal = (rewards +
+                   self.gamma * network(torch.cat(batch.new_state)).max(1).values.view(-1, 1))
+        optimal[-1] = rewards[-1]
 
         # BACKPROPAGATION
-        # --------------------------------------------------
+        # ------------------------------------------------------------------------------------------
+
+        loss = torch.nn.functional.mse_loss(actual, optimal)
 
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
         # EXPLORATION RATE DECAY
-        # --------------------------------------------------
+        # ------------------------------------------------------------------------------------------
 
         self.explore["rate"] = max(self.explore["decay"] * self.explore["rate"],
                                    self.explore["min"])
