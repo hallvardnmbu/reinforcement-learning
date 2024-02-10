@@ -220,7 +220,7 @@ class MinibatchDeepQ(torch.nn.Module):
         self.explore["rate"] = max(self.explore["decay"] * self.explore["rate"],
                                    self.explore["min"])
 
-        return loss.item()
+        return (loss.item() / steps[-1]) * 10000
 
     def remember(self, *args):
         """
