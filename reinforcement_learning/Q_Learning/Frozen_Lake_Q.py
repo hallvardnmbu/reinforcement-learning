@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 class QLearningAgent:
     def __init__(self, state_space, action_space, lr,
                  gamma, epsilon, epsilon_decay, epsilon_minimum):

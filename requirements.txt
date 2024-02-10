@@ -4,3 +4,4 @@ matplotlib
 torch
 numpy
 imageio  # For creating gifs
+pandas # For Q learning agent
