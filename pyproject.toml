@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "special-syllabus"
+version = "0.1.0"
+description = "Leo and Hallvard's Special Syllabus about RL and transformers"
+authors = ["Your Name <you@example.com>"]
+license = "n"
+readme = "README.md"
+packages = [{include = "reinforcement_learning", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+jupyter = "^1.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

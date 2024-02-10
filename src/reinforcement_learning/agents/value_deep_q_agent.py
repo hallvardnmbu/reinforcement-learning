@@ -2,7 +2,7 @@ from collections import namedtuple, deque
 import random
 import numpy as np
 import torch
-from base_agent import Agent
+from reinforcement_learning.agents.base_agent import Agent
 
 
 class ValueDeepQAgent(Agent):

@@ -1,1 +1,1 @@
-# to make python treat this as package
+"Reinforcement learning package by Hallvard and Leo"
