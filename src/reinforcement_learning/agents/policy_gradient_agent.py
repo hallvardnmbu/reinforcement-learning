@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from base_agent import Agent
+from reinforcement_learning.agents import Agent
 
 
 class PolicyGradientAgent(Agent):

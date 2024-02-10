@@ -1,17 +1,19 @@
 [tool.poetry]
-name = "special-syllabus"
+name = "ML_Project"
 version = "0.1.0"
-description = "Leo and Hallvard's Special Syllabus about RL and transformers"
+description = "Hallvard and Leo's machine learning endeavor"
 authors = ["Your Name <you@example.com>"]
-license = "n"
+license = "MIT"
 readme = "README.md"
-packages = [{include = "reinforcement_learning", from = "src"}]
+packages = [
+    { include = "reinforcement_learning", from = "src" },
+    { include = "transformers", from = "src" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
 jupyter = "^1.0.0"
 
-
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
