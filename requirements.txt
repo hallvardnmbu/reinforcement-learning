@@ -1,5 +1,7 @@
-gymnasium
 torch
+mlx  # For Apple M chips
+
+gymnasium
 pygame  # For visualising environment
 
 jupyter
