@@ -11,7 +11,7 @@ from mlx import core as mx
 class MinibatchDeepQ(nn.Module):
     """Value-based agent for reinforcement learning."""
     Memory = namedtuple("Memory",
-                        ["state", "action", "new_state", "reward", "steps"])
+                        ["state", "new_state", "reward", "steps"])
 
     def __init__(self,
                  network,
@@ -81,9 +81,11 @@ class MinibatchDeepQ(nn.Module):
         self.optimizer = optimizer["optim"](learning_rate=optimizer["lr"],
                                             **optimizer.get("hyperparameters", {}))
 
-        self.batch_size = batch_size
-        self.memory = deque(maxlen=other.get("memory", 2500))
-        self.game = []
+        self.memory = {
+            "batch_size": batch_size,
+            "memory": deque(maxlen=other.get("memory", 2500)),
+            "game": [],
+        }
 
     def __call__(self, state):
         """
@@ -117,8 +119,6 @@ class MinibatchDeepQ(nn.Module):
         -------
         action : int
             Selected action.
-        actions : mlx.core.array
-            Q-values for each action.
         """
         if np.random.rand() < self.explore["rate"]:
             action = mx.array(np.random.choice(range(self.layers[-1].weight.shape[0])))
@@ -151,10 +151,10 @@ class MinibatchDeepQ(nn.Module):
         expected future rewards. Then, the agent can adjust its predicted action values so that
         this expected reward is maximized.
         """
-        memory = random.sample(self.memory, min(self.batch_size, len(self.memory)))
+        memory = random.sample(self.memory["memory"],
+                               min(self.memory["batch_size"], len(self.memory["memory"])))
 
         states = mx.concatenate([mx.array(mx.array(game.state)) for game in memory])
-        actions = mx.concatenate([mx.array(game.action) for game in memory])
         new_states = mx.concatenate([mx.array(game.new_state) for game in memory])
         rewards = mx.concatenate([mx.array(game.reward) for game in memory])
 
@@ -220,14 +220,14 @@ class MinibatchDeepQ(nn.Module):
 
     def remember(self, *args):
         """
-        Append state, action, new_state and reward to agents memory of the current game.
+        Append state, new_state and reward to agents memory of the current game.
 
         Parameters
         ----------
         *args : list
             Positional arguments to memorize.
         """
-        self.game.append(args)
+        self.memory["game"].append(args)
 
     def memorize(self, steps):
         """
@@ -238,5 +238,5 @@ class MinibatchDeepQ(nn.Module):
         steps : int
             Number of steps in the game (i.e., game length).
         """
-        self.memory.append(self.Memory(*zip(*self.game), steps))
-        self.game = []
+        self.memory["memory"].append(self.Memory(*zip(*self.memory["game"]), steps))
+        self.memory["game"] = []
