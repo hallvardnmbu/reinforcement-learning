@@ -143,6 +143,7 @@ class MinibatchDeepQ(torch.nn.Module):
         Returns
         -------
         loss : float
+            Relative loss.
 
         Raises
         ------

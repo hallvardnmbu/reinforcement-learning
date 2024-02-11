@@ -1,8 +1,8 @@
 """Policy-based agent for reinforcement learning."""
 
 import numpy as np
-import mlx.nn as nn
-import mlx.core as mx
+from mlx import nn
+from mlx import core as mx
 
 
 class PolicyGradient(nn.Module):
@@ -53,8 +53,8 @@ class PolicyGradient(nn.Module):
             network["nodes"] = [25]
 
         self.layers = []
-        for i, (_in, _out) in enumerate(zip([network["inputs"]] + network["nodes"],
-                                            network["nodes"] + [network["outputs"]])):
+        for (_in, _out) in zip([network["inputs"]] + network["nodes"],
+                               network["nodes"] + [network["outputs"]]):
             self.layers.append(nn.Linear(_in, _out))
 
         # LEARNING

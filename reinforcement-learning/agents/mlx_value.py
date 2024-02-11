@@ -4,8 +4,8 @@ from collections import deque, namedtuple
 import random
 
 import numpy as np
-import mlx.nn as nn
-import mlx.core as mx
+from mlx import nn
+from mlx import core as mx
 
 
 class MinibatchDeepQ(nn.Module):
@@ -37,7 +37,7 @@ class MinibatchDeepQ(nn.Module):
             Contains the optimizer for the model and its hyperparameters. The dictionary must
             contain the following keys:
 
-            optim : torch.optim.X
+            optim : mlx.optimizers.X
                 The optimizer for the model.
             lr : float
                 Learning rate for the optimizer.
@@ -60,8 +60,8 @@ class MinibatchDeepQ(nn.Module):
             network["nodes"] = [25]
 
         self.layers = []
-        for i, (_in, _out) in enumerate(zip([network["inputs"]] + network["nodes"],
-                                            network["nodes"] + [network["outputs"]])):
+        for (_in, _out) in zip([network["inputs"]] + network["nodes"],
+                               network["nodes"] + [network["outputs"]]):
             self.layers.append(nn.Linear(_in, _out))
 
         # LEARNING
@@ -121,11 +121,9 @@ class MinibatchDeepQ(nn.Module):
             Q-values for each action.
         """
         if np.random.rand() < self.explore["rate"]:
-            action = torch.tensor([np.random.choice(
-                range(next(reversed(self._modules.values())).out_features)
-            )], dtype=torch.long)
+            action = mx.array(np.random.choice(range(self.layers[-1].weight.shape[0])))
         else:
-            action = self(state).max(1).indices.flatten()
+            action = self(state).argmax(axis=0)
 
         return action
 
@@ -155,10 +153,10 @@ class MinibatchDeepQ(nn.Module):
         """
         memory = random.sample(self.memory, min(self.batch_size, len(self.memory)))
 
-        states = torch.cat([torch.cat(game.state) for game in memory])
-        actions = torch.cat([torch.cat(game.action) for game in memory])
-        new_states = torch.cat([torch.cat(game.new_state) for game in memory])
-        rewards = torch.cat([torch.cat(game.reward) for game in memory])
+        states = mx.concatenate([mx.array(mx.array(game.state)) for game in memory])
+        actions = mx.concatenate([mx.array(game.action) for game in memory])
+        new_states = mx.concatenate([mx.array(game.new_state) for game in memory])
+        rewards = mx.concatenate([mx.array(game.reward) for game in memory])
 
         steps = [game.steps for game in memory]
         steps = [sum(steps[:i+1])-1 for i in range(len(steps))]
@@ -174,7 +172,10 @@ class MinibatchDeepQ(nn.Module):
             _reward = 0 if i in steps else _reward
             _reward = _reward * self.discount + rewards[i]
             rewards[i] = _reward
-        rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-9)).view(-1, 1)
+
+        mean = rewards.mean(axis=0)
+        std = mx.sqrt(mx.sum(rewards - mean) / len(rewards))
+        rewards = (rewards - mean) / (std + 1e-9)
 
         # Q-LEARNING
         # ------------------------------------------------------------------------------------------
@@ -194,10 +195,9 @@ class MinibatchDeepQ(nn.Module):
         #
         # where Q' is a copy of the agent, which is updated every C steps.
 
-        actual = self(states).gather(1, actions.view(-1, 1))
+        actual = self(states).max(axis=1)
 
-        optimal = (rewards +
-                   self.gamma * network(new_states).max(1).values.view(-1, 1))
+        optimal = rewards.reshape(-1) + self.gamma * network(new_states).max(axis=1)
 
         # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
         for step in steps:
@@ -206,11 +206,9 @@ class MinibatchDeepQ(nn.Module):
         # BACKPROPAGATION
         # ------------------------------------------------------------------------------------------
 
-        loss = nn.functional.mse_loss(actual, optimal)
+        loss = nn.losses.mse_loss(actual, optimal)
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+        self.optimizer.update(self, loss)
 
         # EXPLORATION RATE DECAY
         # ------------------------------------------------------------------------------------------
@@ -218,7 +216,7 @@ class MinibatchDeepQ(nn.Module):
         self.explore["rate"] = max(self.explore["decay"] * self.explore["rate"],
                                    self.explore["min"])
 
-        return loss.item()
+        return loss
 
     def remember(self, *args):
         """
