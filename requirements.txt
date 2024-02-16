@@ -1,11 +1,11 @@
-torch
-mlx  # For Apple M chips
+gymnasium[all]  # May need to have: brew install swig
 
-gymnasium
-pygame  # For visualising environment
+torch
+mlx             # For Apple M chips
 
 jupyter
-matplotlib
+chardet         # For jupyter and gymnasium display
 
 numpy
-imageio  # For creating gifs
+matplotlib
+imageio         # For creating gifs
