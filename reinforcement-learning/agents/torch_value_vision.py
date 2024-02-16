@@ -1,4 +1,4 @@
-"""Value-based agent."""
+"""Value-based agents."""
 
 from collections import deque, namedtuple
 import random
@@ -7,8 +7,8 @@ import numpy as np
 import torch
 
 
-class DeepQ(torch.nn.Module):
-    """Value-based agent for reinforcement learning."""
+class VisionDeepQ(torch.nn.Module):
+    """Value-based vision agent for reinforcement learning."""
     Memory = namedtuple("Memory",
                         ["state", "action", "new_state", "reward", "steps"])
 
@@ -18,7 +18,7 @@ class DeepQ(torch.nn.Module):
                  batch_size=32,
                  **other):
         """
-        Value-based agent for reinforcement learning.
+        Value-based vision agent for reinforcement learning.
 
         Parameters
         ----------
@@ -26,12 +26,14 @@ class DeepQ(torch.nn.Module):
             Contains the architecture for the model.
             The dictionary must contain the following keys:
 
-            inputs : int
-                Number of input nodes (observations).
+            input_channels : int
+                Number of input channels.
             outputs : int
                 Number of output nodes (actions).
-            nodes : list, optional
-                Number of nodes for each hidden layer.
+            kernels : list of tuple of int
+                Kernel size for each layer.
+            channels : list, optional
+                Number of channels for each hidden layer.
         optimizer : dict
             Contains the optimizer for the model and its hyperparameters. The dictionary must
             contain the following keys:
@@ -55,12 +57,33 @@ class DeepQ(torch.nn.Module):
         # ARCHITECTURE
         # ------------------------------------------------------------------------------------------
 
-        if "nodes" not in network:
-            network["nodes"] = [25]
+        if "channels" not in network:
+            network["channels"] = [15]
+        if "kernels" not in network:
+            network["kernels"] = [(3, 3)] * (len(network["channels"]) + 1)
 
-        for i, (_in, _out) in enumerate(zip([network["inputs"]] + network["nodes"],
-                                            network["nodes"] + [network["outputs"]])):
-            setattr(self, f"layer_{i}", torch.nn.Linear(_in, _out, dtype=torch.float32))
+        if len(network["kernels"]) != len(network["channels"])+1:
+            print("Number of kernels must be equal to the number of layers.\n"
+                  "Using default kernel size (3, 3) for all layers.")
+            network["kernels"] = [(3, 3)] * (len(network["channels"]) + 1)
+
+        for i, (_in, _out, _kernel) in enumerate(
+                zip(
+                    [network["input_channels"]] + network["channels"][:-1],
+                    network["channels"],
+                    network["kernels"]
+                )
+        ):
+            setattr(self, f"layer_{i}", torch.nn.Conv2d(_in, _out, kernel_size=_kernel))
+
+        with torch.no_grad():
+            _output = torch.zeros([1, network["input_channels"], 210, 160])
+            for layer in self._modules.values():
+                _output = layer(_output)
+            _output = _output.view(_output.size(0), -1).shape[1]
+
+        setattr(self, f"layer_{len(network['channels'])}",
+                torch.nn.Linear(_output, network["outputs"], dtype=torch.float32))
 
         # LEARNING
         # ------------------------------------------------------------------------------------------
@@ -100,6 +123,7 @@ class DeepQ(torch.nn.Module):
 
         for i in range(1, len(self._modules) - 1):
             _output = torch.relu(getattr(self, f"layer_{i}")(_output))
+        _output = _output.view(_output.size(0), -1).flatten()
 
         output = getattr(self, f"layer_{len(self._modules)-1}")(_output)
 
@@ -196,7 +220,7 @@ class DeepQ(torch.nn.Module):
         #
         # where Q' is a copy of the agent, which is updated every C steps.
 
-        actual = self(states).gather(1, actions.view(-1, 1))
+        actual = self(states).gather(1, actions.view(-1, 1))  # TODO: Doesn't work.
 
         optimal = (rewards +
                    self.gamma * network(new_states).max(1).values.view(-1, 1))
