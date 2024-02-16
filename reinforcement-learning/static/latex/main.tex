@@ -302,7 +302,37 @@ Note that different activation functions may be used, etc. Also, when training t
 \subsection*{\normalsize HIGH–DIMENSIONAL OBSERVATION SPACE \hfill VIDEO INPUT}
 \begin{leftbar}
     \begin{lstlisting}
-    Heisann der!
+    class agent(torch.nn.Module):
+        def __init__(self, inputs, outputs, nodes):
+            super().__init__()
+            for i, (_in, _out, _kernel) in enumerate(
+                    zip(
+                        [network["input_channels"]] + network["channels"][:-1],
+                        network["channels"],
+                        network["kernels"]
+                    )
+            ):
+                setattr(self, f"layer_{i}",
+                        torch.nn.Conv2d(_in, _out, kernel_size=_kernel))
+
+            # Calculating the output shape:
+            with torch.no_grad():
+                _output = torch.zeros([1, network["input_channels"], 210, 160])
+                for layer in self._modules.values():
+                    _output = layer(_output)
+                _output = _output.view(_output.size(0), -1).shape[1]
+
+            setattr(self, f"layer_{len(network['channels'])}",
+                    torch.nn.Linear(_output, network["outputs"], dtype=torch.float32))
+
+        def forward(self, state):
+            _output = torch.relu(self.layer_0(state))
+            for i in range(1, len(self._modules) - 1):
+                _output = torch.relu(getattr(self, f"layer_{i}")(_output))
+            _output = _output.view(_output.size(0), -1).flatten()
+            output = getattr(self, f"layer_{len(self._modules)-1}")(_output)
+
+            return output
     \end{lstlisting}
 \end{leftbar}
 \subsection*{\normalsize POLICY–BASED GRADIENT IMPLEMENTATION}

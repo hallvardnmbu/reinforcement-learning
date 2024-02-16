@@ -76,6 +76,7 @@ class VisionDeepQ(torch.nn.Module):
         ):
             setattr(self, f"layer_{i}", torch.nn.Conv2d(_in, _out, kernel_size=_kernel))
 
+        # Calculating the output shape:
         with torch.no_grad():
             _output = torch.zeros([1, network["input_channels"], 210, 160])
             for layer in self._modules.values():
@@ -220,7 +221,7 @@ class VisionDeepQ(torch.nn.Module):
         #
         # where Q' is a copy of the agent, which is updated every C steps.
 
-        actual = self(states).gather(1, actions.view(-1, 1))  # TODO: Doesn't work.
+        actual = self(states).gather(1, actions.view(-1, 1))  # TODO: FIX THIS!
 
         optimal = (rewards +
                    self.gamma * network(new_states).max(1).values.view(-1, 1))
