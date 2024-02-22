@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 
-class VisionPolicyGradient(torch.nn.Module):
+class PolicyGradient(torch.nn.Module):
     """Policy-based agent for reinforcement learning."""
     def __init__(self,
                  network,
@@ -19,14 +19,12 @@ class VisionPolicyGradient(torch.nn.Module):
             Contains the architecture for the model.
             The dictionary must contain the following keys:
 
-            input_channels : int
-                Number of input channels.
+            inputs : int
+                Number of input nodes (observations).
             outputs : int
                 Number of output nodes (actions).
-            kernels : list of tuple of int
-                Kernel size for each layer.
-            channels : list, optional
-                Number of channels for each hidden layer.
+            nodes : list, optional
+                Number of nodes for each hidden layer.
         optimizer : dict
             Contains the optimizer for the model and its hyperparameters. The dictionary must
             contain the following keys:
@@ -46,37 +44,17 @@ class VisionPolicyGradient(torch.nn.Module):
                 --> 1: consider all future rewards equally
         """
         super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # ARCHITECTURE
         # ------------------------------------------------------------------------------------------
 
-        if "channels" not in network:
-            network["channels"] = [15]
-        if "kernels" not in network:
-            network["kernels"] = [(3, 3)] * (len(network["channels"]) + 1)
+        if "nodes" not in network:
+            network["nodes"] = [25]
 
-        if len(network["kernels"]) != len(network["channels"])+1:
-            print("Number of kernels must be equal to the number of layers.\n"
-                  "Using default kernel size (3, 3) for all layers.")
-            network["kernels"] = [(3, 3)] * (len(network["channels"]) + 1)
-
-        for i, (_in, _out, _kernel) in enumerate(
-                zip(
-                    [network["input_channels"]] + network["channels"][:-1],
-                    network["channels"],
-                    network["kernels"]
-                )
-        ):
-            setattr(self, f"layer_{i}", torch.nn.Conv2d(_in, _out, kernel_size=_kernel))
-
-        with torch.no_grad():
-            _output = torch.zeros([1, network["input_channels"], 210, 160])
-            for layer in self._modules.values():
-                _output = layer(_output)
-            _output = _output.view(_output.size(0), -1).shape[1]
-
-        setattr(self, f"layer_{len(network['channels'])}",
-                torch.nn.Linear(_output, network["outputs"], dtype=torch.float32))
+        for i, (_in, _out) in enumerate(zip([network["inputs"]] + network["nodes"],
+                                            network["nodes"] + [network["outputs"]])):
+            setattr(self, f"layer_{i}", torch.nn.Linear(_in, _out, dtype=torch.float32))
 
         # LEARNING
         # ------------------------------------------------------------------------------------------
@@ -88,6 +66,8 @@ class VisionPolicyGradient(torch.nn.Module):
                                             **optimizer.get("hyperparameters", {}))
 
         self.memory = {key: [] for key in ["logarithm", "reward"]}
+
+        self.to(self.device)
 
     def forward(self, state):
         """
@@ -102,11 +82,11 @@ class VisionPolicyGradient(torch.nn.Module):
         -------
         output : torch.Tensor
         """
+        state = state.to(self.device)
         _output = torch.relu(self.layer_0(state))
 
         for i in range(1, len(self._modules) - 1):
             _output = torch.relu(getattr(self, f"layer_{i}")(_output))
-        _output = _output.view(_output.size(0), -1).flatten()
 
         output = getattr(self, f"layer_{len(self._modules)-1}")(_output)
 
@@ -154,7 +134,7 @@ class VisionPolicyGradient(torch.nn.Module):
          https://medium.com/@thechrisyoon/deriving-policy-gradients-and-implementing-reinforce
          -f887949bd63
         """
-        rewards = torch.tensor(self.memory["reward"], dtype=torch.float32)
+        rewards = torch.tensor(self.memory["reward"], dtype=torch.float32).to(self.device)
 
         # EXPECTED FUTURE REWARDS
         # ------------------------------------------------------------------------------------------

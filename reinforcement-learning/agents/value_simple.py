@@ -1,4 +1,9 @@
-"""Value-based agent."""
+"""
+Simple value-based agent for reinforcement learning.
+
+Useful for environments with discrete state spaces. See `value_advanced.py` or `value_vision.py`
+for a more complex implementation.
+"""
 
 from collections import deque, namedtuple
 import random

@@ -1,4 +1,9 @@
-"""Value-based agents."""
+"""
+Value-based agent for reinforcement learning.
+
+Useful for environments with `rgb` or `grayscale` state spaces (from `gymnasium`). See
+`value_simple.py` or `value_advanced.py` for other implementations.
+"""
 
 from collections import deque, namedtuple
 import random
@@ -53,38 +58,76 @@ class VisionDeepQ(torch.nn.Module):
                 --> 1: consider all future rewards equally
         """
         super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # ARCHITECTURE
         # ------------------------------------------------------------------------------------------
+        # The following makes sure the input shapes are correct, and corrects them if not.
 
         if "channels" not in network:
-            network["channels"] = [15]
+            print("No channels found in input.\n"
+                  "Using a default of 15 channels for the convolutional layer.")
+            network["channels"] = [15] * network.get("kernels", 1)
+
+        channels = len(network["channels"])
+
         if "kernels" not in network:
-            network["kernels"] = [(3, 3)] * (len(network["channels"]) + 1)
+            print(f"No kernels found in input.\n"
+                  f"Using a default kernel size 3 for all ({channels}) convolutional layers.")
+            network["kernels"] = [3] * channels
 
-        if len(network["kernels"]) != len(network["channels"])+1:
-            print("Number of kernels must be equal to the number of layers.\n"
-                  "Using default kernel size (3, 3) for all layers.")
-            network["kernels"] = [(3, 3)] * (len(network["channels"]) + 1)
+        if len(network["kernels"]) != channels:
+            print(f"Number of kernels must be equal to the number of layers ({channels}).\n"
+                  f"Using default kernel size 3 for all layers.")
+            network["kernels"] = [3] * channels
 
-        for i, (_in, _out, _kernel) in enumerate(
-                zip(
+        if len(network["strides"]) != channels:
+            print(f"Number of strides must be equal to the number of layers ({channels}).\n"
+                  f"Using default strides size 1 for all layers.")
+            network["strides"] = [1] * channels
+
+        # Convolutional layers:
+        # ------------------------------------------------------------------------------------------
+
+        for i, (_in, _out, _kernel, _stride) in (
+                enumerate(zip(
                     [network["input_channels"]] + network["channels"][:-1],
                     network["channels"],
-                    network["kernels"]
-                )
+                    network["kernels"],
+                    network["strides"]
+                ))
         ):
-            setattr(self, f"layer_{i}", torch.nn.Conv2d(_in, _out, kernel_size=_kernel))
+            setattr(self, f"layer_{i}",
+                    torch.nn.Conv2d(_in, _out, kernel_size=_kernel, stride=_stride))
 
-        # Calculating the output shape:
+        self.convolutions = len(network["channels"]) - len(network.get("nodes", []))
+
+        # Calculating the output shape of convolutional layers:
+        # ------------------------------------------------------------------------------------------
+
         with torch.no_grad():
             _output = torch.zeros([1, network["input_channels"], 210, 160])
             for layer in self._modules.values():
                 _output = layer(_output)
-            _output = _output.view(_output.size(0), -1).shape[1]
+            _output = _output.view(_output.size(0), -1).flatten().shape[0]
 
-        setattr(self, f"layer_{len(network['channels'])}",
-                torch.nn.Linear(_output, network["outputs"], dtype=torch.float32))
+        # Fully connected layers:
+        # ------------------------------------------------------------------------------------------
+
+        if "nodes" not in network:
+            setattr(self, f"layer_{len(network['channels'])}",
+                    torch.nn.Linear(_output, network["outputs"], dtype=torch.float32))
+        else:
+            setattr(self, f"layer_{len(network['channels'])}",
+                    torch.nn.Linear(_output, network["nodes"][0], dtype=torch.float32))
+
+            for i, (_in, _out) in (
+                    enumerate(zip(
+                        network["nodes"],
+                        network["nodes"][1:] + [network["outputs"]]))
+            ):
+                setattr(self, f"layer_{len(network['channels'])+i+1}",
+                        torch.nn.Linear(_in, _out, dtype=torch.float32))
 
         # LEARNING
         # ------------------------------------------------------------------------------------------
@@ -107,6 +150,8 @@ class VisionDeepQ(torch.nn.Module):
         self.memory = deque(maxlen=other.get("memory", 2500))
         self.game = []
 
+        self.to(self.device)
+
     def forward(self, state):
         """
         Forward pass with nonmodified output.
@@ -120,11 +165,17 @@ class VisionDeepQ(torch.nn.Module):
         -------
         output : torch.Tensor
         """
+        state = state.to(self.device) / torch.tensor(255,
+                                                     dtype=torch.float32, device=self.device)
         _output = torch.relu(self.layer_0(state))
 
         for i in range(1, len(self._modules) - 1):
+            if i > self.convolutions:
+                _output = _output.view(_output.size(0), -1)
+
             _output = torch.relu(getattr(self, f"layer_{i}")(_output))
-        _output = _output.view(_output.size(0), -1).flatten()
+
+        _output = _output.view(_output.size(0), -1)
 
         output = getattr(self, f"layer_{len(self._modules)-1}")(_output)
 
@@ -182,10 +233,10 @@ class VisionDeepQ(torch.nn.Module):
         """
         memory = random.sample(self.memory, min(self.batch_size, len(self.memory)))
 
-        states = torch.cat([torch.cat(game.state) for game in memory])
-        actions = torch.cat([torch.cat(game.action) for game in memory])
-        new_states = torch.cat([torch.cat(game.new_state) for game in memory])
-        rewards = torch.cat([torch.cat(game.reward) for game in memory])
+        states = torch.cat([torch.stack(game.state).squeeze() for game in memory]).unsqueeze(1)
+        actions = torch.cat([torch.stack(game.action) for game in memory]).to(self.device)
+        new_states = torch.cat([torch.stack(game.new_state).squeeze() for game in memory]).unsqueeze(1)
+        rewards = torch.cat([torch.stack(game.reward) for game in memory]).to(self.device)
 
         steps = [game.steps for game in memory]
         steps = [sum(steps[:i+1])-1 for i in range(len(steps))]
@@ -221,10 +272,11 @@ class VisionDeepQ(torch.nn.Module):
         #
         # where Q' is a copy of the agent, which is updated every C steps.
 
-        actual = self(states).gather(1, actions.view(-1, 1))  # TODO: FIX THIS!
+        actual = self(states).gather(1, actions.view(-1, 1))
 
-        optimal = (rewards +
-                   self.gamma * network(new_states).max(1).values.view(-1, 1))
+        with torch.no_grad():
+            optimal = (rewards +
+                       self.gamma * network(new_states).max(1).values.view(-1, 1))
 
         # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
         for step in steps:
@@ -233,7 +285,7 @@ class VisionDeepQ(torch.nn.Module):
         # BACKPROPAGATION
         # ------------------------------------------------------------------------------------------
 
-        loss = torch.nn.functional.mse_loss(actual, optimal)
+        loss = torch.nn.functional.smooth_l1_loss(actual, optimal)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -244,6 +296,8 @@ class VisionDeepQ(torch.nn.Module):
 
         self.explore["rate"] = max(self.explore["decay"] * self.explore["rate"],
                                    self.explore["min"])
+
+        del states, actions, new_states, rewards, _reward, actual, optimal
 
         return (loss.item() / steps[-1]) * 10000
 

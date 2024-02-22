@@ -10,6 +10,11 @@ Spring 2024
 
 ---
 
+N.b., in order for the examples to access atari games etc. from `gymnasium`, Python<=3.10 must be
+used.
+
+---
+
 Syllabus:
 
 Reinforcement Learning:
