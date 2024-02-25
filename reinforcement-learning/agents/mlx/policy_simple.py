@@ -1,4 +1,13 @@
-"""Policy-based agent for reinforcement learning."""
+"""
+Policy-based agent for reinforcement learning using the Apple M chip framework (MLX).
+
+In order to be able to backpropagate properly, the agent has been split into two classes: one for
+the network and one for the agent. The network class is a simple feedforward neural network, while
+the agent class contains the learning algorithm etc.
+
+It is therefore not recommended to use the `Network` class on its own, but rather through the
+"wrapper" class `PolicyGradient`.
+"""
 
 from mlx import nn
 from mlx import core as mx
