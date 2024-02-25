@@ -1,11 +1,62 @@
 """Policy-based agent for reinforcement learning."""
 
-import numpy as np
 from mlx import nn
 from mlx import core as mx
 
 
-class PolicyGradient(nn.Module):
+class Network(nn.Module):
+    """Agent network."""
+    def __init__(self, network):
+        """
+        Policy-based agent for reinforcement learning.
+
+        Parameters
+        ----------
+        network : dict
+            Contains the architecture for the model.
+            The dictionary must contain the following keys:
+
+            inputs : int
+                Number of input nodes (observations).
+            outputs : int
+                Number of output nodes (actions).
+            nodes : list, optional
+                Number of nodes for each hidden layer.
+        """
+        super().__init__()
+
+        # ARCHITECTURE
+        # ------------------------------------------------------------------------------------------
+
+        if "nodes" not in network:
+            network["nodes"] = [25]
+
+        self.layers = []
+        for (_in, _out) in zip([network["inputs"]] + network["nodes"],
+                               network["nodes"] + [network["outputs"]]):
+            self.layers.append(nn.Linear(_in, _out))
+
+    def __call__(self, state):
+        """
+        Forward pass with nonmodified output.
+
+        Parameters
+        ----------
+        state : mlx.core.array
+            Observed state.
+
+        Returns
+        -------
+        output : mlx.core.array
+        """
+        for layer in self.layers[:-1]:
+            state = nn.relu(layer(state))
+        output = self.layers[-1](state)
+
+        return output
+
+
+class PolicyGradient:
     """Policy-based agent for reinforcement learning."""
     def __init__(self,
                  network,
@@ -44,18 +95,7 @@ class PolicyGradient(nn.Module):
                 --> 0: only consider immediate rewards
                 --> 1: consider all future rewards equally
         """
-        super().__init__()
-
-        # ARCHITECTURE
-        # ------------------------------------------------------------------------------------------
-
-        if "nodes" not in network:
-            network["nodes"] = [25]
-
-        self.layers = []
-        for (_in, _out) in zip([network["inputs"]] + network["nodes"],
-                               network["nodes"] + [network["outputs"]]):
-            self.layers.append(nn.Linear(_in, _out))
+        self.agent = Network(network)
 
         # LEARNING
         # ------------------------------------------------------------------------------------------
@@ -63,29 +103,11 @@ class PolicyGradient(nn.Module):
         # control through deep reinforcement learning" (2015).
 
         self.discount = other.get("discount", 0.99)
+        self.gradient = nn.value_and_grad(self.agent, self.loss)
         self.optimizer = optimizer["optim"](learning_rate=optimizer["lr"],
                                             **optimizer.get("hyperparameters", {}))
 
-        self.memory = {key: [] for key in ["logarithm", "reward"]}
-
-    def __call__(self, state):
-        """
-        Forward pass with nonmodified output.
-
-        Parameters
-        ----------
-        state : mlx.core.array
-            Observed state.
-
-        Returns
-        -------
-        output : mlx.core.array
-        """
-        for layer in self.layers[:-1]:
-            state = nn.relu(layer(state))
-        output = self.layers[-1](state)
-
-        return output
+        self.memory = {key: [] for key in ["state", "action", "reward"]}
 
     def action(self, state):
         """
@@ -100,27 +122,10 @@ class PolicyGradient(nn.Module):
         -------
         action : int
             Selected action.
-        logarithm : mlx.core.array
-            Logarithm of the selected action probability.
         """
-        actions = nn.softmax(self(state))
+        action = mx.random.categorical(self.agent(state)).item()
 
-        # Issue with MLX softmax, probabilities do not sum to exactly one.
-        # ---
-        probabilities = [round(action, 5) for action in actions.tolist()]
-        rest = 1 - sum(probabilities)
-        probabilities[0] = round(probabilities[0] + rest, 5)
-        # ---
-
-        if sum(probabilities) != 1.0:
-            print(probabilities)
-
-        action = np.random.choice(range(actions.shape[0]), 1,
-                                  p=probabilities)[0]
-
-        logarithm = np.log(actions.tolist()[action])
-
-        return action, logarithm
+        return action
 
     def learn(self):
         """
@@ -128,7 +133,7 @@ class PolicyGradient(nn.Module):
 
         Returns
         -------
-        gradient : float
+        loss : float
 
         Notes
         -----
@@ -141,6 +146,8 @@ class PolicyGradient(nn.Module):
          -f887949bd63
         """
         rewards = mx.array(self.memory["reward"])
+        states = mx.array(self.memory["state"])
+        actions = mx.array(self.memory["action"])
 
         # EXPECTED FUTURE REWARDS
         # ------------------------------------------------------------------------------------------
@@ -153,32 +160,57 @@ class PolicyGradient(nn.Module):
             _reward = _reward * self.discount + rewards[i]
             rewards[i] = _reward
 
-        mean = rewards.mean(axis=0)
-        std = mx.sqrt(mx.sum(rewards - mean)/len(rewards))
+        mean = mx.mean(rewards)
+        std = mx.sqrt(mx.sum((rewards - mean) ** 2)/rewards.shape[0])
         rewards = (rewards - mean) / (std + 1e-9)
 
         # POLICY GRADIENT
         # ------------------------------------------------------------------------------------------
-        # The policy gradient is the gradient of the expected reward with respect to the action
-        # taken (policy). This is computed by multiplying the logarithm of the selected action
-        # probability (see `action` method) with the standardized expected reward — previously
-        # calculated. The overall gradient is then the sum of all these products.
 
-        gradient = mx.zeros_like(rewards)
-        for i, (logarithm, reward) in enumerate(zip(self.memory["logarithm"], rewards)):
-            gradient[i] = -logarithm * reward
-        gradient = gradient.sum(axis=0)
+        loss, gradients = self.gradient(rewards, states, actions)
 
         # BACKPROPAGATION
         # ------------------------------------------------------------------------------------------
         # The gradient is then used to update the agent's policy. This is done by backpropagating
         # with the optimizer using the gradient.
 
-        self.optimizer.update(self, gradient)
+        self.optimizer.update(self.agent, gradients)
 
+        loss = loss.item() * (100 / rewards.shape[0])
         self.memory = {key: [] for key in self.memory.keys()}
 
-        return gradient.item()
+        return loss
+
+    def loss(self, rewards, states, actions):
+        """
+        Compute the policy gradient.
+
+        Parameters
+        ----------
+        rewards : mlx.core.array
+            Standardized expected rewards.
+        states : mlx.core.array
+            Observed states.
+        actions : mlx.core.array
+            Selected actions.
+
+        Returns
+        -------
+        loss : mlx.core.array
+
+        Notes
+        -----
+            The policy gradient is the gradient of the expected reward with respect to the action
+            taken (policy). This is computed by multiplying the logarithm of the selected action
+            probability (see `action` method) with the standardized expected reward — previously
+            calculated. The overall gradient is then the sum of all these products.
+        """
+        probabilities = nn.softmax(self.agent(states))[mx.arange(actions.shape[0]), actions]
+        logarithms = mx.log(probabilities)
+
+        loss = mx.sum(-logarithms * rewards)
+
+        return loss
 
     def memorize(self, *args):
         """
@@ -189,7 +221,8 @@ class PolicyGradient(nn.Module):
         *args : list
             Positional arguments to memorize.
         """
-        logarithm, reward = args
+        state, action, reward = args
 
-        self.memory["logarithm"].append(logarithm)
+        self.memory["state"].append(state)
+        self.memory["action"].append(action)
         self.memory["reward"].append(reward)
