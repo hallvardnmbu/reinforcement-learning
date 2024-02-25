@@ -134,13 +134,13 @@ class VisionDeepQ(torch.nn.Module):
         # Default discount factor is 0.99, as suggested by the Google DeepMind paper "Human-level
         # control through deep reinforcement learning" (2015).
 
-        self.discount = other.get("discount", 0.99)
-        self.gamma = other.get("gamma", 0.95)
-
         self.explore = {
             "rate": other.get("exploration_rate", 0.9),
             "decay": other.get("exploration_decay", 0.999),
             "min": other.get("exploration_min", 0.01),
+
+            "discount": other.get("discount", 0.99),
+            "gamma": other.get("gamma", 0.95),
         }
 
         self.optimizer = optimizer["optim"](self.parameters(), lr=optimizer["lr"],
@@ -235,7 +235,8 @@ class VisionDeepQ(torch.nn.Module):
 
         states = torch.cat([torch.stack(game.state).squeeze() for game in memory]).unsqueeze(1)
         actions = torch.cat([torch.stack(game.action) for game in memory]).to(self.device)
-        new_states = torch.cat([torch.stack(game.new_state).squeeze() for game in memory]).unsqueeze(1)
+        new_states = torch.cat([torch.stack(game.new_state).squeeze()
+                                for game in memory]).unsqueeze(1)
         rewards = torch.cat([torch.stack(game.reward) for game in memory]).to(self.device)
 
         steps = [game.steps for game in memory]
@@ -250,7 +251,7 @@ class VisionDeepQ(torch.nn.Module):
         _reward = 0
         for i in reversed(range(len(rewards))):
             _reward = 0 if i in steps else _reward
-            _reward = _reward * self.discount + rewards[i]
+            _reward = _reward * self.explore["discount"] + rewards[i]
             rewards[i] = _reward
         rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-9)).view(-1, 1)
 
@@ -276,7 +277,7 @@ class VisionDeepQ(torch.nn.Module):
 
         with torch.no_grad():
             optimal = (rewards +
-                       self.gamma * network(new_states).max(1).values.view(-1, 1))
+                       self.explore["gamma"] * network(new_states).max(1).values.view(-1, 1))
 
         # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
         for step in steps:
