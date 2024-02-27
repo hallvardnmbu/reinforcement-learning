@@ -98,7 +98,7 @@ class DeepQ:
             Contains the optimizer for the model and its hyperparameters. The dictionary must
             contain the following keys:
 
-            optim : mlx.optimizers.X
+            optimizer : mlx.optimizers.X
                 The optimizer for the model.
             lr : float
                 Learning rate for the optimizer.
@@ -121,7 +121,7 @@ class DeepQ:
 
         self.gradient = nn.value_and_grad(self.agent, self.loss)
 
-        self.explore = {
+        self.parameter = {
             "rate": other.get("exploration_rate", 0.9),
             "decay": other.get("exploration_decay", 0.999),
             "min": other.get("exploration_min", 0.01),
@@ -130,8 +130,8 @@ class DeepQ:
             "gamma": other.get("gamma", 0.95),
         }
 
-        self.optimizer = optimizer["optim"](learning_rate=optimizer["lr"],
-                                            **optimizer.get("hyperparameters", {}))
+        self.optimizer = optimizer["optimizer"](learning_rate=optimizer["lr"],
+                                                **optimizer.get("hyperparameters", {}))
 
         self.memory = {
             "batch_size": batch_size,
@@ -153,7 +153,7 @@ class DeepQ:
         action : int
             Selected action.
         """
-        if np.random.rand() < self.explore["rate"]:
+        if np.random.rand() < self.parameter["rate"]:
             action = mx.array(np.random.choice(range(self.agent.layers[-1].weight.shape[0])))
         else:
             action = self.agent(state).argmax(axis=0)
@@ -166,7 +166,7 @@ class DeepQ:
 
         Parameters
         ----------
-        network : nn.Module
+        network : mlx.nn.Module
             Reference network for Q-learning.
 
         Returns
@@ -204,7 +204,7 @@ class DeepQ:
         _reward = 0
         for i in reversed(range(len(rewards))):
             _reward = 0 if i in steps else _reward
-            _reward = _reward * self.explore["discount"] + rewards[i]
+            _reward = _reward * self.parameter["discount"] + rewards[i]
             rewards[i] = _reward
 
         mean = mx.mean(rewards)
@@ -225,8 +225,8 @@ class DeepQ:
         # EXPLORATION RATE DECAY
         # ------------------------------------------------------------------------------------------
 
-        self.explore["rate"] = max(self.explore["decay"] * self.explore["rate"],
-                                   self.explore["min"])
+        self.parameter["rate"] = max(self.parameter["decay"] * self.parameter["rate"],
+                                     self.parameter["min"])
 
         return loss.item() * (1000 / steps[-1])
 
@@ -284,7 +284,7 @@ class DeepQ:
                                     indices=actions, axis=1).squeeze()
 
         optimal = (rewards.reshape(-1) +                                                      # noqa
-                   self.explore["gamma"] * network(new_states).max(axis=1))                   # noqa
+                   self.parameter["gamma"] * network(new_states).max(axis=1))                 # noqa
 
         # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
         for step in steps:

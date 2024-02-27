@@ -43,7 +43,7 @@ class VisionDeepQ(torch.nn.Module):
             Contains the optimizer for the model and its hyperparameters. The dictionary must
             contain the following keys:
 
-            optim : torch.optim.X
+            optimizer : torch.optim.X
                 The optimizer for the model.
             lr : float
                 Learning rate for the optimizer.
@@ -56,6 +56,8 @@ class VisionDeepQ(torch.nn.Module):
                 Discount factor for future rewards.
                 --> 0: only consider immediate rewards
                 --> 1: consider all future rewards equally
+            gamma : float, optional
+                Discount factor for Q-learning.
         """
         super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -134,17 +136,17 @@ class VisionDeepQ(torch.nn.Module):
         # Default discount factor is 0.99, as suggested by the Google DeepMind paper "Human-level
         # control through deep reinforcement learning" (2015).
 
-        self.explore = {
+        self.parameter = {
             "rate": other.get("exploration_rate", 0.9),
-            "decay": other.get("exploration_decay", 0.999),
+            "decay": other.get("exploration_decay", 0.995),
             "min": other.get("exploration_min", 0.01),
 
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
         }
 
-        self.optimizer = optimizer["optim"](self.parameters(), lr=optimizer["lr"],
-                                            **optimizer.get("hyperparameters", {}))
+        self.optimizer = optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
+                                                **optimizer.get("hyperparameters", {}))
 
         self.batch_size = batch_size
         self.memory = deque(maxlen=other.get("memory", 2500))
@@ -167,11 +169,16 @@ class VisionDeepQ(torch.nn.Module):
         """
         state = state.to(self.device) / torch.tensor(255,
                                                      dtype=torch.float32, device=self.device)
+
+        print(state.shape)
+
         _output = torch.relu(self.layer_0(state))
 
         for i in range(1, len(self._modules) - 1):
             if i > self.convolutions:
                 _output = _output.view(_output.size(0), -1)
+
+            print(_output.shape)
 
             _output = torch.relu(getattr(self, f"layer_{i}")(_output))
 
@@ -197,9 +204,9 @@ class VisionDeepQ(torch.nn.Module):
         actions : torch.Tensor
             Q-values for each action.
         """
-        if np.random.rand() < self.explore["rate"]:
+        if np.random.rand() < self.parameter["rate"]:
             action = torch.tensor([np.random.choice(
-                range(next(reversed(self._modules.values())).out_features)
+                next(reversed(self._modules.values())).out_features
             )], dtype=torch.long)
         else:
             action = self(state).max(1).indices.flatten()
@@ -251,7 +258,7 @@ class VisionDeepQ(torch.nn.Module):
         _reward = 0
         for i in reversed(range(len(rewards))):
             _reward = 0 if i in steps else _reward
-            _reward = _reward * self.explore["discount"] + rewards[i]
+            _reward = _reward * self.parameter["discount"] + rewards[i]
             rewards[i] = _reward
         rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-9)).view(-1, 1)
 
@@ -277,7 +284,7 @@ class VisionDeepQ(torch.nn.Module):
 
         with torch.no_grad():
             optimal = (rewards +
-                       self.explore["gamma"] * network(new_states).max(1).values.view(-1, 1))
+                       self.parameter["gamma"] * network(new_states).max(1).values.view(-1, 1))
 
         # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
         for step in steps:
@@ -295,8 +302,8 @@ class VisionDeepQ(torch.nn.Module):
         # EXPLORATION RATE DECAY
         # ------------------------------------------------------------------------------------------
 
-        self.explore["rate"] = max(self.explore["decay"] * self.explore["rate"],
-                                   self.explore["min"])
+        self.parameter["rate"] = max(self.parameter["decay"] * self.parameter["rate"],
+                                     self.parameter["min"])
 
         del states, actions, new_states, rewards, _reward, actual, optimal
 

@@ -41,7 +41,7 @@ class DeepQ(torch.nn.Module):
             Contains the optimizer for the model and its hyperparameters. The dictionary must
             contain the following keys:
 
-            optim : torch.optim.X
+            optimizer : torch.optim.X
                 The optimizer for the model.
             lr : float
                 Learning rate for the optimizer.
@@ -81,8 +81,8 @@ class DeepQ(torch.nn.Module):
             "min": other.get("exploration_min", 0.01),
         }
 
-        self.optimizer = optimizer["optim"](self.parameters(), lr=optimizer["lr"],
-                                            **optimizer.get("hyperparameters", {}))
+        self.optimizer = optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
+                                                **optimizer.get("hyperparameters", {}))
 
         self.batch_size = batch_size
         self.memory = deque(maxlen=other.get("memory", 2500))

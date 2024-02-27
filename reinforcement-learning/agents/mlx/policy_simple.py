@@ -90,7 +90,7 @@ class PolicyGradient:
             Contains the optimizer for the model and its hyperparameters. The dictionary must
             contain the following keys:
 
-            optim : mlx.optim.X
+            optimizer : mlx.optim.X
                 The optimizer for the model.
             lr : float
                 Learning rate for the optimizer.
@@ -113,8 +113,8 @@ class PolicyGradient:
 
         self.discount = other.get("discount", 0.99)
         self.gradient = nn.value_and_grad(self.agent, self.loss)
-        self.optimizer = optimizer["optim"](learning_rate=optimizer["lr"],
-                                            **optimizer.get("hyperparameters", {}))
+        self.optimizer = optimizer["optimizer"](learning_rate=optimizer["lr"],
+                                                **optimizer.get("hyperparameters", {}))
 
         self.memory = {key: [] for key in ["state", "action", "reward"]}
 

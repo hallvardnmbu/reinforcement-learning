@@ -29,7 +29,7 @@ class PolicyGradient(torch.nn.Module):
             Contains the optimizer for the model and its hyperparameters. The dictionary must
             contain the following keys:
 
-            optim : torch.optim.X
+            optimizer : torch.optim.X
                 The optimizer for the model.
             lr : float
                 Learning rate for the optimizer.
@@ -62,8 +62,8 @@ class PolicyGradient(torch.nn.Module):
         # control through deep reinforcement learning" (2015).
 
         self.discount = other.get("discount", 0.99)
-        self.optimizer = optimizer["optim"](self.parameters(), lr=optimizer["lr"],
-                                            **optimizer.get("hyperparameters", {}))
+        self.optimizer = optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
+                                                **optimizer.get("hyperparameters", {}))
 
         self.memory = {key: [] for key in ["logarithm", "reward"]}
 
