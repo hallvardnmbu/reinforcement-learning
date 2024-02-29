@@ -18,7 +18,7 @@ from agent import VisionDeepQ
 
 handler = logging.FileHandler('./output/debug.txt')
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)  # Set to DEBUG for more information
 logger.addHandler(handler)
 
 environment = gym.make('ALE/Tetris-v5', render_mode="rgb_array",
@@ -30,42 +30,41 @@ environment.metadata["render_fps"] = 30
 
 # Parameters
 
-GAMES = 5000
+GAMES = 25000
 FRAMESKIP = 4  # Repeat action for n frames
 
 DISCOUNT = 0.99  # Discount rate for rewards
-GAMMA = 0.95  # Discount rate for Q-learning
+GAMMA = 0.99  # Discount rate for Q-learning
 
 EXPLORATION_RATE = 1.0  # Initial exploration rate
-EXPLORATION_DECAY = 0.9995  # Decay rate every game (rate *= decay)
+EXPLORATION_DECAY = 0.9997  # Decay rate every game (rate *= decay)
 EXPLORATION_MIN = 0.01  # Minimum exploration rate
 
-MINIBATCH = 32  # Size of the minibatch
-TRAIN_EVERY = 10  # Train the network every n games
-START_TRAINING_AT = 250  # Start training after n games
+MINIBATCH = 128  # Size of the minibatch
+TRAIN_EVERY = 1  # Train the network every n games
+START_TRAINING_AT = 1000  # Start training after n games
 
 REMEMBER_ALL = False  # Only remember games with rewards
-MEMORY = 1500  # Size of the agents internal memory
-RESET_Q_EVERY = 250  # Update target-network every n games
+MEMORY = 5000  # Size of the agents internal memory
+RESET_Q_EVERY = 100  # Update target-network every n games
 
 NETWORK = {
     "input_channels": 1, "outputs": 5,
     "frames": FRAMESKIP,
     "channels": [32, 64, 64],
-    "kernels": [8, 4, 3],
-    "strides": [4, 2, 1],
+    "kernels": [5, 3, 3],
+    "strides": [3, 2, 1],
     "nodes": [64]
 }
 OPTIMIZER = {
-    "optimizer": torch.optim.RMSprop,
-    "lr": 0.0025,
+    "optimizer": torch.optim.AdamW,
+    "lr": 0.001,
     "hyperparameters": {}
 }
 
 # Initialisation
 
-
-logger.debug("Initialising agent")
+logger.info("Initialising agent")
 
 value_agent = VisionDeepQ(
     network=NETWORK, optimizer=OPTIMIZER,
@@ -78,9 +77,16 @@ value_agent = VisionDeepQ(
     exploration_min=EXPLORATION_MIN
 )
 
+logger.debug("Agent initialized")
+logger.debug(" > %s", value_agent)
+
+logger.debug("Initialising target-network")
+
 _value_agent = copy.deepcopy(value_agent)
 
-CHECKPOINT = GAMES // 10
+logger.debug("Target-network initialized")
+
+CHECKPOINT = GAMES // 40
 METRICS = {
     "steps": torch.zeros(GAMES),
     "losses": torch.zeros(GAMES // TRAIN_EVERY),
@@ -88,15 +94,15 @@ METRICS = {
     "rewards": torch.zeros(GAMES)
 }
 
-
 # Training
 # --------------------------------------------------------------------------------------------------
 
+logger.info("Starting training")
 
 start = time.time()
 for game in range(1, GAMES + 1):
 
-    logger.info("Game %s", game)
+    logger.debug("Game %s", game)
 
     state = torch.tensor(environment.reset()[0], dtype=torch.float32).view((1, 1, 210, 160))  # noqa
     TERMINATED = TRUNCATED = False
@@ -109,52 +115,51 @@ for game in range(1, GAMES + 1):
     while not (TERMINATED or TRUNCATED):
         action = value_agent.action(state)
 
-        logger.debug(" > Action: %s", action.item())
-
         new_state, reward, TERMINATED, TRUNCATED, _ = environment.step(action.item())  # noqa
 
-        logger.debug("   New state shape before reshaping: %s", new_state.shape)
+        logger.debug(" New state shape before reshaping: %s", new_state.shape)
 
         new_state = torch.tensor(new_state, dtype=torch.float32).view((1, 1, 210, 160))
 
         value_agent.remember(state, action, new_state, torch.tensor([reward]))
 
-        logger.debug("   Remembered state (%s), action (%s), new_state (%s) and reward (%s)",
-                     state.shape, action.item(), new_state.shape, reward)
+        logger.debug(" Remembering:")
+        logger.debug(" > State: %s", state.shape)
+        logger.debug(" > Action: %s", action)
+        logger.debug(" > New state: %s", new_state.shape)
+        logger.debug(" > Reward: %s", reward)
 
         state = new_state
 
         STEPS += 1
         REWARDS += reward
 
-        logger.info(" > Step %s", STEPS)
-        logger.debug(" > Reward: %s", reward)
+        logger.debug(" Step %s", STEPS)
 
     if REMEMBER_ALL or REWARDS > 0:
-        logger.debug(" > Memorizing game")
+        logger.debug(" Memorizing game")
         value_agent.memorize(STEPS)
-        logger.debug(" > Memorized. Memory size: %s", len(value_agent.memory["game"]))
+        logger.info(" > Memorized. Memory size: %s", len(value_agent.memory["game"]))
     else:
-        logger.debug(" > Not memorizing game")
+        logger.debug(" Not memorizing game")
         value_agent.memory["game"].clear()
+        logger.debug(" > Cleared memory")
 
     if (game % TRAIN_EVERY == 0
             and len(value_agent.memory["memory"]) > 0
             and game >= START_TRAINING_AT):
 
-        logger.info(" > Training agent")
+        logger.debug("Training agent")
 
         loss = value_agent.learn(network=_value_agent)
         METRICS["losses"][game // TRAIN_EVERY - 1] = loss
 
-        logger.info("   Loss: %s", loss)
+        logger.debug(" > Loss: %s", loss)
 
     if game % RESET_Q_EVERY == 0 and game > START_TRAINING_AT:
-        logger.info(" > Resetting target-network")
+        logger.info("Resetting target-network")
 
         _value_agent.load_state_dict(value_agent.state_dict())
-
-        logger.info("   Target-network reset")
 
     # METRICS
     # ----------------------------------------------------------------------------------------------
@@ -165,11 +170,11 @@ for game in range(1, GAMES + 1):
 
     if game % CHECKPOINT == 0 or game == GAMES:
 
-        logger.info(" > Saving weights")
+        logger.info("Saving weights")
 
         torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
 
-        logger.info("   Weights saved to ./output/weights-%s.pth", game)
+        logger.debug(" > Weights saved to ./output/weights-%s.pth", game)
 
         _MEAN_STEPS = METRICS["steps"][max(0, game - CHECKPOINT - 1):game - 1].mean()
         _TOTAL_REWARDS = METRICS["rewards"][max(0, game - CHECKPOINT - 1):game - 1].sum()
@@ -191,14 +196,14 @@ print(f"Total training time: {time.time() - start:.2f} seconds")
 
 logger.info("Saving final weights")
 torch.save(value_agent.state_dict(), "./output/weights-final.pth")
-logger.info("   Saved final weights to ./output/weights-final.pth")
+logger.debug(" > Saved final weights to ./output/weights-final.pth")
 
 # Visualisation
 # --------------------------------------------------------------------------------------------------
 
 # Metrics
 
-logger.info("Visualising METRICS")
+logger.info("Visualising metrics")
 
 
 def moving_average(data, window_size=50):

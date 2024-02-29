@@ -20,7 +20,6 @@ Rearrange
             ├── output/
             │   ├── print_%s.out
             │   ├── debug.txt
-            │   ├── log.txt
             │   │
             │   ├── value-vision-tetris.gif
             │   ├── value-vision-tetris.png
@@ -66,4 +65,4 @@ Notes
     
     The log messages (i.e., debug and info) are written to `./output/debug.txt`.
     
-    Printouts are saved to `./output/log.txt` and `./output/print_{%s}.txt`.
+    Printouts are saved to `./output/print.out`.
