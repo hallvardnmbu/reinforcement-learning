@@ -95,10 +95,10 @@ class Network(nn.Module):
         else:
             self.layers.append(nn.Linear(_output, network["nodes"][0]))
 
-            for i, (_in, _out) in (
-                    enumerate(zip(
+            for _in, _out in (
+                    zip(
                         network["nodes"],
-                        network["nodes"][1:] + [network["outputs"]]))
+                        network["nodes"][1:] + [network["outputs"]])
             ):
                 self.layers.append(nn.Linear(_in, _out))
 

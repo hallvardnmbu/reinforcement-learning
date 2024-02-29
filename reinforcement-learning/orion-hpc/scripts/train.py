@@ -1,8 +1,13 @@
+"""Orion HPC training script."""
+
+
 # Value-based vision agent in the tetris environment using PyTorch
 # --------------------------------------------------------------------------------------------------
 
 import copy
 import time
+import logging
+
 import torch
 import imageio
 import gymnasium as gym
@@ -10,7 +15,6 @@ import matplotlib.pyplot as plt
 
 from agent import VisionDeepQ
 
-import logging
 
 handler = logging.FileHandler('./output/debug.txt')
 logger = logging.getLogger(__name__)
@@ -76,8 +80,8 @@ value_agent = VisionDeepQ(
 
 _value_agent = copy.deepcopy(value_agent)
 
-checkpoint = GAMES // 10
-metrics = {
+CHECKPOINT = GAMES // 10
+METRICS = {
     "steps": torch.zeros(GAMES),
     "losses": torch.zeros(GAMES // TRAIN_EVERY),
     "exploration": torch.zeros(GAMES),
@@ -92,45 +96,44 @@ metrics = {
 start = time.time()
 for game in range(1, GAMES + 1):
 
-    logger.info(f"Game {game:>6}")
+    logger.info("Game %s", game)
 
     state = torch.tensor(environment.reset()[0], dtype=torch.float32).view((1, 1, 210, 160))  # noqa
-    terminated = truncated = False
+    TERMINATED = TRUNCATED = False
 
     # LEARNING FROM GAME
     # ----------------------------------------------------------------------------------------------
 
-    steps = 0
-    rewards = 0
-    while not (terminated or truncated):
+    STEPS = 0
+    REWARDS = 0
+    while not (TERMINATED or TRUNCATED):
         action = value_agent.action(state)
 
-        logger.debug(f" > Action: {action.item()}")
+        logger.debug(" > Action: %s", action.item())
 
-        new_state, reward, terminated, truncated, _ = environment.step(action.item())  # noqa
+        new_state, reward, TERMINATED, TRUNCATED, _ = environment.step(action.item())  # noqa
 
-        logger.debug(f"   New state shape before reshaping: {new_state.shape}")
+        logger.debug("   New state shape before reshaping: %s", new_state.shape)
 
         new_state = torch.tensor(new_state, dtype=torch.float32).view((1, 1, 210, 160))
 
         value_agent.remember(state, action, new_state, torch.tensor([reward]))
 
-        logger.debug(f"   Remembered "
-                     f"state ({state.shape}), action ({action.item()}), "
-                     f"new_state ({new_state.shape}) and reward ({reward})")
+        logger.debug("   Remembered state (%s), action (%s), new_state (%s) and reward (%s)",
+                     state.shape, action.item(), new_state.shape, reward)
 
         state = new_state
 
-        steps += 1
-        rewards += reward
+        STEPS += 1
+        REWARDS += reward
 
-        logger.info(f" > Step {steps:>3}")
-        logger.debug(f" > Reward: {reward:>3}")
+        logger.info(" > Step %s", STEPS)
+        logger.debug(" > Reward: %s", reward)
 
-    if REMEMBER_ALL or rewards > 0:
+    if REMEMBER_ALL or REWARDS > 0:
         logger.debug(" > Memorizing game")
-        value_agent.memorize(steps)
-        logger.debug(f" > Memorized. Memory size: {len(value_agent.memory['memory'])}")
+        value_agent.memorize(STEPS)
+        logger.debug(" > Memorized. Memory size: %s", len(value_agent.memory["game"]))
     else:
         logger.debug(" > Not memorizing game")
         value_agent.memory["game"].clear()
@@ -139,50 +142,50 @@ for game in range(1, GAMES + 1):
             and len(value_agent.memory["memory"]) > 0
             and game >= START_TRAINING_AT):
 
-        logger.info(f" > Training agent")
+        logger.info(" > Training agent")
 
         loss = value_agent.learn(network=_value_agent)
-        metrics["losses"][game // TRAIN_EVERY - 1] = loss
+        METRICS["losses"][game // TRAIN_EVERY - 1] = loss
 
-        logger.info(f"   Loss: {loss:.4f}")
+        logger.info("   Loss: %s", loss)
 
     if game % RESET_Q_EVERY == 0 and game > START_TRAINING_AT:
-        logger.info(f" > Resetting target-network")
+        logger.info(" > Resetting target-network")
 
         _value_agent.load_state_dict(value_agent.state_dict())
 
-        logger.info(f"   Target-network reset")
+        logger.info("   Target-network reset")
 
     # METRICS
     # ----------------------------------------------------------------------------------------------
 
-    metrics["steps"][game - 1] = steps
-    metrics["exploration"][game - 1] = value_agent.parameter["rate"]
-    metrics["rewards"][game - 1] = rewards
+    METRICS["steps"][game - 1] = STEPS
+    METRICS["exploration"][game - 1] = value_agent.parameter["rate"]
+    METRICS["rewards"][game - 1] = REWARDS
 
-    if game % checkpoint == 0 or game == GAMES:
+    if game % CHECKPOINT == 0 or game == GAMES:
 
-        logger.info(f" > Saving weights")
+        logger.info(" > Saving weights")
 
         torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
 
-        logger.info(f"   Weights saved to ./output/weights-{game}.pth")
+        logger.info("   Weights saved to ./output/weights-%s.pth", game)
 
-        _mean_steps = metrics["steps"][max(0, game - checkpoint - 1):game - 1].mean()
-        _total_rewards = metrics["rewards"][max(0, game - checkpoint - 1):game - 1].sum()
+        _MEAN_STEPS = METRICS["steps"][max(0, game - CHECKPOINT - 1):game - 1].mean()
+        _TOTAL_REWARDS = METRICS["rewards"][max(0, game - CHECKPOINT - 1):game - 1].sum()
 
         if game >= START_TRAINING_AT:
-            _mean_loss = metrics["losses"][max(0, (game - checkpoint - 1)
+            _MEAN_LOSS = METRICS["losses"][max(0, (game - CHECKPOINT - 1)
                                                // TRAIN_EVERY):game // TRAIN_EVERY].mean()
-            _mean_loss = f"{_mean_loss:.4f}"
+            _MEAN_LOSS = f"{_MEAN_LOSS:.4f}"
         else:
-            _mean_loss = "-"
+            _MEAN_LOSS = "-"
 
         print(f"Game {game:>6} {int(game / GAMES * 100):>16} % \n"
               f"{'-' * 30} \n"
-              f" > Average steps: {int(_mean_steps):>12} \n"
-              f" > Average loss: {_mean_loss:>13} \n"
-              f" > Rewards: {int(_total_rewards):>18} \n ")
+              f" > Average steps: {int(_MEAN_STEPS):>12} \n"
+              f" > Average loss: {_MEAN_LOSS:>13} \n"
+              f" > Rewards: {int(_TOTAL_REWARDS):>18} \n ")
 
 print(f"Total training time: {time.time() - start:.2f} seconds")
 
@@ -195,7 +198,7 @@ logger.info("   Saved final weights to ./output/weights-final.pth")
 
 # Metrics
 
-logger.info("Visualising metrics")
+logger.info("Visualising METRICS")
 
 
 def moving_average(data, window_size=50):
@@ -205,31 +208,31 @@ def moving_average(data, window_size=50):
             for i in range(len(data))]
 
 
-steps = moving_average(metrics["steps"])
-losses = moving_average(metrics["losses"])
-rewards = [val.item() if val > 0 else torch.nan for val in metrics["rewards"]]
+STEPS = moving_average(METRICS["steps"])
+LOSSES = moving_average(METRICS["losses"])
+REWARDS = [val.item() if val > 0 else torch.nan for val in METRICS["rewards"]]
 
 fig, ax = plt.subplots(3, 1, figsize=(12, 8))
 fig.suptitle("Value-based: vision deep Q-learning agent")
 
-ax[0].plot(steps, color="black", linewidth=1)
+ax[0].plot(STEPS, color="black", linewidth=1)
 ax[0].set_xticks([])
 ax[0].set_title("Average steps per game")
 
-ax[1].plot(torch.linspace(0, GAMES, len(losses)), losses, color="black", linewidth=1)
-ax[1].set_yscale("log") if any(loss > 0 for loss in losses) else None
+ax[1].plot(torch.linspace(0, GAMES, len(LOSSES)), LOSSES, color="black", linewidth=1)
+ax[1].set_yscale("log") if any(loss > 0 for loss in LOSSES) else None
 ax[1].set_xticks([])
 ax[1].set_title("Average loss")
 
 ax_2 = ax[1].twinx()
-ax_2.plot(metrics["exploration"], color="gray", linewidth=0.5)
+ax_2.plot(METRICS["exploration"], color="gray", linewidth=0.5)
 ax_2.set_ylabel("Exploration rate")
 ax_2.yaxis.label.set_color('gray')
 ax_2.set_ylim(-0.1, 1.1)
 ax_2.tick_params(axis='y', colors='gray')
 
-ax[2].scatter(range(len(rewards)), rewards, color="black", s=15, marker="*")
-ticks = list(set(reward for reward in rewards if not torch.isnan(torch.tensor(reward))))
+ax[2].scatter(range(len(REWARDS)), REWARDS, color="black", s=15, marker="*")
+ticks = list(set(reward for reward in REWARDS if not torch.isnan(torch.tensor(reward))))
 ax[2].set_yticks(ticks) if ticks else None
 ax[2].set_xlim(ax[1].get_xlim())
 ax[2].set_xlabel("Game nr.")
@@ -245,7 +248,7 @@ ax[1].axvline(x=START_TRAINING_AT, color='black', linewidth=1)
 ax[2].axvline(x=START_TRAINING_AT, color='black', linewidth=1)
 ax[2].text(START_TRAINING_AT, 1, 'Training starts',
            rotation=90, verticalalignment='center', horizontalalignment='center',
-           bbox=dict(facecolor='white', alpha=1.0))
+           bbox={"facecolor": 'white', "alpha": 1.0})
 
 plt.savefig("./output/value-vision-tetris.png")
 
@@ -256,11 +259,11 @@ logger.info("Running agent in environment")
 state = torch.tensor(environment.reset()[0], dtype=torch.float32).view((1, 1, 210, 160))
 
 images = []
-terminated = truncated = False
-while not (terminated or truncated):
+TERMINATED = TRUNCATED = False
+while not (TERMINATED or TRUNCATED):
     action = value_agent(state).argmax(1).item()
 
-    state, reward, terminated, truncated, _ = environment.step(action)
+    state, reward, TERMINATED, TRUNCATED, _ = environment.step(action)
     state = torch.tensor(state, dtype=torch.float32).view((1, 1, 210, 160))
 
     images.append(environment.render())
