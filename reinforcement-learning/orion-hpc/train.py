@@ -10,8 +10,12 @@ import matplotlib.pyplot as plt
 
 from agent import VisionDeepQ
 
-from logging import getLogger
-logger = getLogger(__name__)
+import logging
+
+handler = logging.FileHandler('./output/debug.txt')
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
 
 environment = gym.make('ALE/Tetris-v5', render_mode="rgb_array",
                        obs_type="grayscale", frameskip=4, repeat_action_probability=0.25)
@@ -160,7 +164,7 @@ for game in range(1, GAMES + 1):
 
         logger.info(f" > Saving weights")
 
-        value_agent.save(f"./output/weights-{game}.pth")
+        torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
 
         logger.info(f"   Weights saved to ./output/weights-{game}.pth")
 
@@ -183,7 +187,7 @@ for game in range(1, GAMES + 1):
 print(f"Total training time: {time.time() - start:.2f} seconds")
 
 logger.info("Saving final weights")
-value_agent.save("./output/weights-final.pth")
+torch.save(value_agent.state_dict(), "./output/weights-final.pth")
 logger.info("   Saved final weights to ./output/weights-final.pth")
 
 # Visualisation

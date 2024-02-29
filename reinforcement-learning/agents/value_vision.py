@@ -206,7 +206,7 @@ class VisionDeepQ(torch.nn.Module):
         else:
             action = self(state).argmax(1)
 
-        return action
+        return action.to(self.device)
 
     def learn(self, network):
         """
