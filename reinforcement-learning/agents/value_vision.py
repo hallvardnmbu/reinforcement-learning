@@ -148,9 +148,11 @@ class VisionDeepQ(torch.nn.Module):
         self.optimizer = optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
                                                 **optimizer.get("hyperparameters", {}))
 
-        self.batch_size = batch_size
-        self.memory = deque(maxlen=other.get("memory", 2500))
-        self.game = []
+        self.memory = {
+            "batch_size": batch_size,
+            "memory": deque(maxlen=other.get("memory", 2500)),
+            "game": deque([])
+        }
 
         self.to(self.device)
 
@@ -170,18 +172,11 @@ class VisionDeepQ(torch.nn.Module):
         state = state.to(self.device) / torch.tensor(255,
                                                      dtype=torch.float32, device=self.device)
 
-        print(state.shape)
-
         _output = torch.relu(self.layer_0(state))
-
         for i in range(1, len(self._modules) - 1):
             if i > self.convolutions:
                 _output = _output.view(_output.size(0), -1)
-
-            print(_output.shape)
-
             _output = torch.relu(getattr(self, f"layer_{i}")(_output))
-
         _output = _output.view(_output.size(0), -1)
 
         output = getattr(self, f"layer_{len(self._modules)-1}")(_output)
@@ -209,7 +204,7 @@ class VisionDeepQ(torch.nn.Module):
                 next(reversed(self._modules.values())).out_features
             )], dtype=torch.long)
         else:
-            action = self(state).max(1).indices.flatten()
+            action = self(state).argmax(1)
 
         return action
 
@@ -238,7 +233,8 @@ class VisionDeepQ(torch.nn.Module):
         expected future rewards. Then, the agent can adjust its predicted action values so that
         this expected reward is maximized.
         """
-        memory = random.sample(self.memory, min(self.batch_size, len(self.memory)))
+        memory = random.sample(self.memory["memory"],
+                               min(self.memory["batch_size"], len(self.memory["memory"])))
 
         states = torch.cat([torch.stack(game.state).squeeze() for game in memory]).unsqueeze(1)
         actions = torch.cat([torch.stack(game.action) for game in memory]).to(self.device)
@@ -318,7 +314,7 @@ class VisionDeepQ(torch.nn.Module):
         *args : list
             Positional arguments to memorize.
         """
-        self.game.append(args)
+        self.memory["game"].append(args)
 
     def memorize(self, steps):
         """
@@ -329,5 +325,5 @@ class VisionDeepQ(torch.nn.Module):
         steps : int
             Number of steps in the game (i.e., game length).
         """
-        self.memory.append(self.Memory(*zip(*self.game), steps))
-        self.game = []
+        self.memory["memory"].append(self.Memory(*zip(*self.memory["game"]), steps))
+        self.memory["game"].clear()
