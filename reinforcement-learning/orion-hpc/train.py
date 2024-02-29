@@ -182,6 +182,10 @@ for game in range(1, GAMES + 1):
 
 print(f"Total training time: {time.time() - start:.2f} seconds")
 
+logger.info("Saving final weights")
+value_agent.save("./output/weights-final.pth")
+logger.info("   Saved final weights to ./output/weights-final.pth")
+
 # Visualisation
 # --------------------------------------------------------------------------------------------------
 
