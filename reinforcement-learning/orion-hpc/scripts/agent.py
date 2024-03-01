@@ -236,6 +236,17 @@ class VisionDeepQ(torch.nn.Module):
         memory = random.sample(self.memory["memory"],
                                min(self.memory["batch_size"], len(self.memory["memory"])))
 
+        # ******************************************************************************************
+        # ******************************************************************************************
+        # ******************************************************************************************
+        #
+        # ORDNE OPP HER.
+        # Her kan det optimaliseres. Se på lagring og henting av minnet.
+        #
+        # ******************************************************************************************
+        # ******************************************************************************************
+        # ******************************************************************************************
+
         states = torch.cat([torch.stack(game.state).squeeze() for game in memory]).unsqueeze(1)
         actions = torch.cat([torch.stack(game.action) for game in memory]).to(self.device)
         new_states = torch.cat([torch.stack(game.new_state).squeeze()
@@ -276,20 +287,21 @@ class VisionDeepQ(torch.nn.Module):
         #
         # where Q' is a copy of the agent, which is updated every C steps.
 
-        actual = self(states).gather(1, actions.view(-1, 1))
+        with torch.cuda.amp.autocast():
+            actual = self(states).gather(1, actions.view(-1, 1))
 
-        with torch.no_grad():
-            optimal = (rewards +
-                       self.parameter["gamma"] * network(new_states).max(1).values.view(-1, 1))
+            with torch.no_grad():
+                optimal = (rewards +
+                           self.parameter["gamma"] * network(new_states).max(1).values.view(-1, 1))
 
-        # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
-        for step in steps:
-            optimal[step] = rewards[step]
+            # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
+            for step in steps:
+                optimal[step] = rewards[step]
 
         # BACKPROPAGATION
         # ------------------------------------------------------------------------------------------
 
-        loss = torch.nn.functional.mse_loss(actual, optimal)
+            loss = torch.nn.functional.mse_loss(actual, optimal)
 
         self.optimizer.zero_grad()
         loss.backward()

@@ -31,7 +31,6 @@ environment.metadata["render_fps"] = 30
 # Parameters
 
 GAMES = 25000
-FRAMESKIP = 4  # Repeat action for n frames
 
 DISCOUNT = 0.99  # Discount rate for rewards
 GAMMA = 0.99  # Discount rate for Q-learning
@@ -50,7 +49,6 @@ RESET_Q_EVERY = 100  # Update target-network every n games
 
 NETWORK = {
     "input_channels": 1, "outputs": 5,
-    "frames": FRAMESKIP,
     "channels": [32, 64, 64],
     "kernels": [5, 3, 3],
     "strides": [3, 2, 1],
