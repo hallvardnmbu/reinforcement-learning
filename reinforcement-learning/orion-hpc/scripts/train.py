@@ -170,7 +170,8 @@ for game in range(1, GAMES + 1):
     if REMEMBER_ALL or REWARDS > 0:
         logger.debug(" Memorizing game")
         value_agent.memorize(STEPS)
-        logger.info(" > Memorized. Memory size: %s", len(value_agent.memory["memory"]))
+        logger.info(" > Memorized game. Memory: %s. Rewards: %s",
+                    len(value_agent.memory["memory"]), REWARDS)
     else:
         logger.debug(" Not memorizing game")
         value_agent.memory["game"].clear()
@@ -216,17 +217,16 @@ for game in range(1, GAMES + 1):
         else:
             _MEAN_LOSS = "-"
 
-        print(f"Game {game:>6} {int(game / GAMES * 100):>16} % \n"
-              f"{'-' * 30} \n"
-              f" > Average steps: {int(_MEAN_STEPS):>12} \n"
-              f" > Average loss: {_MEAN_LOSS:>13} \n"
-              f" > Rewards: {int(_TOTAL_REWARDS):>18} \n ")
+        logger.info("Game %s (%s / 100)", game, int(game * 100 / GAMES))
+        logger.info(" > Average steps: %s", int(_MEAN_STEPS))
+        logger.info(" > Average loss:  %s", _MEAN_LOSS)
+        logger.info(" > Rewards:       %s", int(_TOTAL_REWARDS))
 
-print(f"Total training time: {time.time() - start:.2f} seconds")
+logger.info("Total training time: %s seconds", round(time.time() - start, 2))
 
-logger.info("Saving final weights")
-torch.save(value_agent.state_dict(), "./output/weights-final.pth")
-logger.debug(" > Saved final weights to ./output/weights-final.pth")
+logger.debug("Saving final weights")
+torch.save(value_agent.state_dict(), f"./output/weights-{GAMES}.pth")
+logger.info(" > Saved final weights to ./output/weights-%s.pth", GAMES)
 
 # Visualisation
 # --------------------------------------------------------------------------------------------------
