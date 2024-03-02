@@ -4,6 +4,8 @@
 # Value-based vision agent in the tetris environment using PyTorch
 # --------------------------------------------------------------------------------------------------
 
+import os
+import re
 import copy
 import time
 import logging
@@ -39,12 +41,12 @@ EXPLORATION_RATE = 1.0  # Initial exploration rate
 EXPLORATION_DECAY = 0.9997  # Decay rate every game (rate *= decay)
 EXPLORATION_MIN = 0.01  # Minimum exploration rate
 
-MINIBATCH = 128  # Size of the minibatch
+MINIBATCH = 32  # Size of the minibatch
 TRAIN_EVERY = 1  # Train the network every n games
 START_TRAINING_AT = 1000  # Start training after n games
 
 REMEMBER_ALL = False  # Only remember games with rewards
-MEMORY = 5000  # Size of the agents internal memory
+MEMORY = 1000  # Size of the agents internal memory
 RESET_Q_EVERY = 100  # Update target-network every n games
 
 NETWORK = {
@@ -61,6 +63,7 @@ OPTIMIZER = {
 }
 
 # Initialisation
+# --------------------------------------------------------------------------------------------------
 
 logger.info("Initialising agent")
 
@@ -78,11 +81,36 @@ value_agent = VisionDeepQ(
 logger.debug("Agent initialized")
 logger.debug(" > %s", value_agent)
 
+# Searching for and loading previous weights
+# --------------------------------------------------------------------------------------------------
+# Searches for the pattern "weights-{CHECKPOINT}.pth" in the current directory and
+# subdirectories, and loads the weights from the file with the highest checkpoint.
+
+logger.debug("Trying to load weights")
+files = [os.path.join(root, f)
+         for root, dirs, files in os.walk(".")
+         for f in files if f.endswith('.pth')]
+if files:
+    for file in sorted(files,
+                       key=lambda x: int(re.search(r'weights-(\d+).pth', x).group(1)),
+                       reverse=True):
+        try:
+            weights = torch.load(file)
+            value_agent.load_state_dict(weights)
+            logger.info("Weights loaded from %s", file)
+            break
+        except Exception as e:
+            logger.error("Failed to load weights from %s due to error: %s", file, str(e))
+
+# Target-network
+# --------------------------------------------------------------------------------------------------
+
 logger.debug("Initialising target-network")
-
 _value_agent = copy.deepcopy(value_agent)
-
 logger.debug("Target-network initialized")
+
+# Misc
+# --------------------------------------------------------------------------------------------------
 
 CHECKPOINT = GAMES // 40
 METRICS = {
@@ -95,12 +123,17 @@ METRICS = {
 # Training
 # --------------------------------------------------------------------------------------------------
 
-logger.info("Starting training")
+logger.info("Starting playing")
+TRAINING = False
 
 start = time.time()
 for game in range(1, GAMES + 1):
 
     logger.debug("Game %s", game)
+
+    if not TRAINING and game >= START_TRAINING_AT:
+        logger.info("Starting training")
+        TRAINING = True
 
     state = torch.tensor(environment.reset()[0], dtype=torch.float32).view((1, 1, 210, 160))  # noqa
     TERMINATED = TRUNCATED = False
@@ -137,7 +170,7 @@ for game in range(1, GAMES + 1):
     if REMEMBER_ALL or REWARDS > 0:
         logger.debug(" Memorizing game")
         value_agent.memorize(STEPS)
-        logger.info(" > Memorized. Memory size: %s", len(value_agent.memory["game"]))
+        logger.info(" > Memorized. Memory size: %s", len(value_agent.memory["memory"]))
     else:
         logger.debug(" Not memorizing game")
         value_agent.memory["game"].clear()
@@ -145,7 +178,7 @@ for game in range(1, GAMES + 1):
 
     if (game % TRAIN_EVERY == 0
             and len(value_agent.memory["memory"]) > 0
-            and game >= START_TRAINING_AT):
+            and TRAINING):
 
         logger.debug("Training agent")
 
@@ -154,7 +187,7 @@ for game in range(1, GAMES + 1):
 
         logger.debug(" > Loss: %s", loss)
 
-    if game % RESET_Q_EVERY == 0 and game > START_TRAINING_AT:
+    if game % RESET_Q_EVERY == 0 and TRAINING:
         logger.info("Resetting target-network")
 
         _value_agent.load_state_dict(value_agent.state_dict())
@@ -168,16 +201,15 @@ for game in range(1, GAMES + 1):
 
     if game % CHECKPOINT == 0 or game == GAMES:
 
-        logger.info("Saving weights")
-
-        torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
-
-        logger.debug(" > Weights saved to ./output/weights-%s.pth", game)
+        if TRAINING:
+            logger.info("Saving weights")
+            torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
+            logger.debug(" > Weights saved to ./output/weights-%s.pth", game)
 
         _MEAN_STEPS = METRICS["steps"][max(0, game - CHECKPOINT - 1):game - 1].mean()
         _TOTAL_REWARDS = METRICS["rewards"][max(0, game - CHECKPOINT - 1):game - 1].sum()
 
-        if game >= START_TRAINING_AT:
+        if TRAINING:
             _MEAN_LOSS = METRICS["losses"][max(0, (game - CHECKPOINT - 1)
                                                // TRAIN_EVERY):game // TRAIN_EVERY].mean()
             _MEAN_LOSS = f"{_MEAN_LOSS:.4f}"
