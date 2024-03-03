@@ -1,13 +1,15 @@
-"""Orion HPC training script."""
+"""
+Orion HPC training script.
 
-
-# Value-based vision agent in the tetris environment using PyTorch
-# --------------------------------------------------------------------------------------------------
+Value-based vision agent in the tetris environment using PyTorch
+"""
 
 import os
 import re
+import sys
 import copy
 import time
+import signal
 import logging
 
 import torch
@@ -17,37 +19,55 @@ import matplotlib.pyplot as plt
 
 from agent import VisionDeepQ
 
+# Logging
+# --------------------------------------------------------------------------------------------------
+# Modify `logger.setLevel` to `logging.DEBUG` for more information.
 
 handler = logging.FileHandler('./output/debug.txt')
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)  # Set to DEBUG for more information
+logger.setLevel(logging.INFO)
 logger.addHandler(handler)
+
+# Environment
+# --------------------------------------------------------------------------------------------------
 
 environment = gym.make('ALE/Tetris-v5', render_mode="rgb_array",
                        obs_type="grayscale", frameskip=4, repeat_action_probability=0.25)
 environment.metadata["render_fps"] = 30
 
-# Training
-# --------------------------------------------------------------------------------------------------
-
 # Parameters
+# --------------------------------------------------------------------------------------------------
+# Description of the parameters:
+#   SHAPE : input shape of the network (batch, channels, height, width)
+#   DISCOUNT : discount rate for rewards
+#   GAMMA : discount rate for Q-learning
+#   EXPLORATION_RATE : initial exploration rate
+#   EXPLORATION_MIN : minimum exploration rate
+#   EXPLORATION_STEPS : number of games to decay exploration rate from `RATE` to `MIN`
+#   MINIBATCH : size of the minibatch
+#   TRAIN_EVERY : train the network every n games
+#   START_TRAINING_AT : start training after n games
+#   REMEMBER_ALL : only remember games with rewards
+#   MEMORY : size of the agents internal memory
+#   RESET_Q_EVERY : update target-network every n games
 
-GAMES = 25000
+GAMES = 50000
+SHAPE = (1, 1, 210, 160)
 
-DISCOUNT = 0.99  # Discount rate for rewards
-GAMMA = 0.99  # Discount rate for Q-learning
+DISCOUNT = 0.98
+GAMMA = 0.99
 
-EXPLORATION_RATE = 1.0  # Initial exploration rate
-EXPLORATION_DECAY = 0.9997  # Decay rate every game (rate *= decay)
-EXPLORATION_MIN = 0.01  # Minimum exploration rate
+EXPLORATION_RATE = 0.6
+EXPLORATION_MIN = 0.01
+EXPLORATION_STEPS = 1500
 
-MINIBATCH = 32  # Size of the minibatch
-TRAIN_EVERY = 1  # Train the network every n games
-START_TRAINING_AT = 1000  # Start training after n games
+MINIBATCH = 32
+TRAIN_EVERY = 5
+START_TRAINING_AT = 2500
 
-REMEMBER_ALL = False  # Only remember games with rewards
-MEMORY = 1000  # Size of the agents internal memory
-RESET_Q_EVERY = 100  # Update target-network every n games
+REMEMBER_ALL = False
+MEMORY = 100
+RESET_Q_EVERY = 100
 
 NETWORK = {
     "input_channels": 1, "outputs": 5,
@@ -57,7 +77,7 @@ NETWORK = {
     "nodes": [64]
 }
 OPTIMIZER = {
-    "optimizer": torch.optim.AdamW,
+    "optimizer": torch.optim.Adam,
     "lr": 0.001,
     "hyperparameters": {}
 }
@@ -70,12 +90,17 @@ logger.info("Initialising agent")
 value_agent = VisionDeepQ(
     network=NETWORK, optimizer=OPTIMIZER,
 
-    discount=DISCOUNT, gamma=GAMMA,
+    batch_size=MINIBATCH, shape=SHAPE,
 
-    batch_size=MINIBATCH, memory=MEMORY,
+    other={
+        "discount": DISCOUNT, "gamma": GAMMA,
 
-    exploration_rate=EXPLORATION_RATE, exploration_decay=EXPLORATION_DECAY,
-    exploration_min=EXPLORATION_MIN
+        "memory": MEMORY,
+
+        "exploration_rate": EXPLORATION_RATE,
+        "exploration_steps": EXPLORATION_STEPS,
+        "exploration_min": EXPLORATION_MIN
+    }
 )
 
 logger.debug("Agent initialized")
@@ -92,8 +117,9 @@ files = [os.path.join(root, f)
          for f in files if f.endswith('.pth')]
 if files:
     for file in sorted(files,
-                       key=lambda x: int(re.search(r'weights-(\d+).pth', x).group(1)),
-                       reverse=True):
+                       key=lambda x: int(re.search(r'/weights-(\d+).pth', x).group(1))
+                       if re.search(r'/weights-(\d+).pth', x) is not None
+                       else 0, reverse=True):
         try:
             weights = torch.load(file)
             value_agent.load_state_dict(weights)
@@ -120,6 +146,26 @@ METRICS = {
     "rewards": torch.zeros(GAMES)
 }
 
+
+# Handling job cancellation
+# --------------------------------------------------------------------------------------------------
+
+def cancelled(signal, frame):
+    """
+    Save weights and exit when job is cancelled. Does not seem to work, as the job is killed
+    before the signal is handled. I.e., SLURM cancellation is too quick.
+    """
+    logger.info("Job cancelled. Saving weights...")
+    try:
+        torch.save(value_agent.state_dict(), f"./output/weights-{GAMES}.pth")
+        logger.info("Weights saved to ./output/weights-%s.pth", GAMES)
+    except Exception as e:
+        logger.error("Failed to save weights due to error: %s", str(e))
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, cancelled)
+
 # Training
 # --------------------------------------------------------------------------------------------------
 
@@ -135,7 +181,7 @@ for game in range(1, GAMES + 1):
         logger.info("Starting training")
         TRAINING = True
 
-    state = torch.tensor(environment.reset()[0], dtype=torch.float32).view((1, 1, 210, 160))  # noqa
+    state = torch.tensor(environment.reset()[0], dtype=torch.float32).view(SHAPE)
     TERMINATED = TRUNCATED = False
 
     # LEARNING FROM GAME
@@ -146,13 +192,13 @@ for game in range(1, GAMES + 1):
     while not (TERMINATED or TRUNCATED):
         action = value_agent.action(state)
 
-        new_state, reward, TERMINATED, TRUNCATED, _ = environment.step(action.item())  # noqa
+        new_state, reward, TERMINATED, TRUNCATED, _ = environment.step(action.item())
 
         logger.debug(" New state shape before reshaping: %s", new_state.shape)
 
-        new_state = torch.tensor(new_state, dtype=torch.float32).view((1, 1, 210, 160))
+        new_state = torch.tensor(new_state, dtype=torch.float32).view(SHAPE)
 
-        value_agent.remember(state, action, new_state, torch.tensor([reward]))
+        value_agent.remember(state, action, torch.tensor([reward]))
 
         logger.debug(" Remembering:")
         logger.debug(" > State: %s", state.shape)
@@ -169,9 +215,9 @@ for game in range(1, GAMES + 1):
 
     if REMEMBER_ALL or REWARDS > 0:
         logger.debug(" Memorizing game")
-        value_agent.memorize(STEPS)
-        logger.info(" > Memorized game. Memory: %s. Rewards: %s",
-                    len(value_agent.memory["memory"]), REWARDS)
+        value_agent.memorize(state, STEPS)
+        logger.info(" Memorized %s Memory: %s/%s Rewards: %s",
+                    game, len(value_agent.memory["memory"]), MEMORY, REWARDS)
     else:
         logger.debug(" Not memorizing game")
         value_agent.memory["game"].clear()
@@ -189,7 +235,7 @@ for game in range(1, GAMES + 1):
         logger.debug(" > Loss: %s", loss)
 
     if game % RESET_Q_EVERY == 0 and TRAINING:
-        logger.info("Resetting target-network")
+        logger.info(" Resetting target-network")
 
         _value_agent.load_state_dict(value_agent.state_dict())
 
@@ -203,7 +249,7 @@ for game in range(1, GAMES + 1):
     if game % CHECKPOINT == 0 or game == GAMES:
 
         if TRAINING:
-            logger.info("Saving weights")
+            logger.info(" Saving weights")
             torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
             logger.debug(" > Weights saved to ./output/weights-%s.pth", game)
 
@@ -217,7 +263,7 @@ for game in range(1, GAMES + 1):
         else:
             _MEAN_LOSS = "-"
 
-        logger.info("Game %s (%s / 100)", game, int(game * 100 / GAMES))
+        logger.info("Game %s (%s %%)", game, int(game * 100 / GAMES))
         logger.info(" > Average steps: %s", int(_MEAN_STEPS))
         logger.info(" > Average loss:  %s", _MEAN_LOSS)
         logger.info(" > Rewards:       %s", int(_TOTAL_REWARDS))
@@ -291,7 +337,7 @@ plt.savefig("./output/value-vision-tetris.png")
 
 logger.info("Running agent in environment")
 
-state = torch.tensor(environment.reset()[0], dtype=torch.float32).view((1, 1, 210, 160))
+state = torch.tensor(environment.reset()[0], dtype=torch.float32).view(SHAPE)
 
 images = []
 TERMINATED = TRUNCATED = False
@@ -299,7 +345,7 @@ while not (TERMINATED or TRUNCATED):
     action = value_agent(state).argmax(1).item()
 
     state, reward, TERMINATED, TRUNCATED, _ = environment.step(action)
-    state = torch.tensor(state, dtype=torch.float32).view((1, 1, 210, 160))
+    state = torch.tensor(state, dtype=torch.float32).view(SHAPE)
 
     images.append(environment.render())
 _ = imageio.mimsave('./output/value-vision-tetris.gif', images, duration=50)
