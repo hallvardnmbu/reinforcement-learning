@@ -26,7 +26,7 @@ Rearrange the file structure in Orion to the following layout:
     │   │
     │   ├── weights-{game-number}.pth
     │   │   ...
-    │   └── weights-final.pth
+    │   └── weights-{final-game-number}.pth
     │
     ├── agent.py
     ├── train.py
@@ -60,9 +60,10 @@ sbatch train.sh
 Notes
 -----
 
-The checkpointed weights are saved to `./output/weights-{game-number}.pth`. And the final weights
-are saved to `./output/weights-final.pth`.
+The checkpointed weights are saved to `./output/weights-{game-number}.pth`.
 
-The log messages (i.e., debug and info) are written to `./output/debug.txt`.
+The log messages (i.e., info and error messages) are written to `./output/debug.txt`. In order 
+to view more detailed messages, set the log-level to debug in `./train.py`. 
 
-Printouts are saved to `./output/print.out`.
+Printouts are saved to `./output/print.out`, but the most informative output is the `.
+/output/debug.txt`.

@@ -305,7 +305,7 @@ class VisionDeepQ(torch.nn.Module):
         self.optimizer.zero_grad()
         loss.backward()
 
-        # # Clamping gradients as per the Google DeepMind paper.  # TODO: Remove?
+        # # Clamping gradients as per the Google DeepMind paper.
         # for param in self.parameters():
         #     param.grad.data.clamp_(-1, 1)
 
