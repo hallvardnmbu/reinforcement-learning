@@ -1,8 +1,7 @@
 """
 Value-based agent for reinforcement learning.
 
-Useful for environments with `ram` state spaces (from `gymnasium`). See `value_simple.py` or
-`value_vision.py` for other implementations.
+Useful for environments with `ram` state spaces (from `gymnasium`).
 """
 
 from collections import deque, namedtuple

@@ -1,8 +1,7 @@
 """
 Value-based agent for reinforcement learning.
 
-Useful for environments with `rgb` or `grayscale` state spaces (from `gymnasium`). See
-`value_simple.py` or `value_advanced.py` for other implementations.
+Useful for environments with `rgb` or `grayscale` state spaces (from `gymnasium`).
 
 NOTE: MLX convolutional layers has channels as the last dimension, where PyTorch has it as the
 second; [B, H, W, C] vs. [B, C, H, W].

@@ -1,9 +1,7 @@
 """
 Value-based agent for reinforcement learning.
 
-Useful for environments with `rgb` or `grayscale` state spaces (from `gymnasium`) with
-frame-skipping. See `value_simple.py`, `value_advanced.py` or `value_vision.py` for other
-implementations.
+Useful for environments with `rgb` or `grayscale` state spaces (from `gymnasium`).
 """
 
 from collections import deque, namedtuple
@@ -13,17 +11,16 @@ import numpy as np
 import torch
 
 
-class VideoDeepQ(torch.nn.Module):
+class VisionDeepQ(torch.nn.Module):
     """Value-based vision agent for reinforcement learning."""
     Memory = namedtuple("Memory",
-                        ["state", "action", "new_states", "reward", "steps"])
-    Game = namedtuple("Game",
-                      ["state", "action", "new_states", "reward"])
+                        ["state", "action", "reward", "new_state", "steps"])
 
     def __init__(self,
                  network,
                  optimizer,
                  batch_size=32,
+                 shape=(1, 1, 210, 160),
                  **other):
         """
         Value-based vision agent for reinforcement learning.
@@ -36,8 +33,6 @@ class VideoDeepQ(torch.nn.Module):
 
             input_channels : int
                 Number of input channels.
-            frames : int
-                Number of frames to observe between each action.
             outputs : int
                 Number of output nodes (actions).
             kernels : list of tuple of int
@@ -54,6 +49,10 @@ class VideoDeepQ(torch.nn.Module):
                 Learning rate for the optimizer.
             **hyperparameters : dict, optional
                 Additional hyperparameters for the optimizer.
+        batch_size : int, optional
+            Number of samples to train on.
+        shape : tuple of int, optional
+            Shape of the input state space.
         other : dict
             Additional parameters.
 
@@ -93,9 +92,6 @@ class VideoDeepQ(torch.nn.Module):
                   f"Using default strides size 1 for all layers.")
             network["strides"] = [1] * channels
 
-        # Conv3d expects input in the shape of (batch, channels, frames, height, width).
-        self.shape = (1, network["input_channels"], network["frames"], 210, 160)
-
         # Convolutional layers:
         # ------------------------------------------------------------------------------------------
 
@@ -108,7 +104,7 @@ class VideoDeepQ(torch.nn.Module):
                 ))
         ):
             setattr(self, f"layer_{i}",
-                    torch.nn.Conv3d(_in, _out, kernel_size=_kernel, stride=_stride))
+                    torch.nn.Conv2d(_in, _out, kernel_size=_kernel, stride=_stride))
 
         self.convolutions = len(network["channels"]) - len(network.get("nodes", []))
 
@@ -116,7 +112,7 @@ class VideoDeepQ(torch.nn.Module):
         # ------------------------------------------------------------------------------------------
 
         with torch.no_grad():
-            _output = torch.zeros(self.shape)
+            _output = torch.zeros([1, network["input_channels"], shape[-2], shape[-1]])
             for layer in self._modules.values():
                 _output = layer(_output)
             _output = _output.view(_output.size(0), -1).flatten().shape[0]
@@ -144,10 +140,13 @@ class VideoDeepQ(torch.nn.Module):
         # Default discount factor is 0.99, as suggested by the Google DeepMind paper "Human-level
         # control through deep reinforcement learning" (2015).
 
+        eps_rate = other.get("exploration_rate", 0.9)
+        eps_steps = other.get("exploration_steps", 1500)
+        eps_min = other.get("exploration_min", 0.01)
         self.parameter = {
-            "rate": other.get("exploration_rate", 0.9),
-            "decay": other.get("exploration_decay", 0.995),
-            "min": other.get("exploration_min", 0.01),
+            "rate": eps_rate,
+            "decay": (eps_rate - eps_min) / eps_steps,
+            "min": eps_min,
 
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
@@ -159,8 +158,7 @@ class VideoDeepQ(torch.nn.Module):
         self.memory = {
             "batch_size": batch_size,
             "memory": deque(maxlen=other.get("memory", 2500)),
-            "game": deque([]),
-            "observed": deque(maxlen=network["frames"]),
+            "game": deque([])
         }
 
         self.to(self.device)
@@ -182,13 +180,10 @@ class VideoDeepQ(torch.nn.Module):
                                                      dtype=torch.float32, device=self.device)
 
         _output = torch.relu(self.layer_0(state))
-
         for i in range(1, len(self._modules) - 1):
             if i > self.convolutions:
                 _output = _output.view(_output.size(0), -1)
-
             _output = torch.relu(getattr(self, f"layer_{i}")(_output))
-
         _output = _output.view(_output.size(0), -1)
 
         output = getattr(self, f"layer_{len(self._modules)-1}")(_output)
@@ -202,13 +197,12 @@ class VideoDeepQ(torch.nn.Module):
         Parameters
         ----------
         state : torch.Tensor
+            Observed state.
 
         Returns
         -------
-        action : int
+        action : torch.Tensor
             Selected action.
-        actions : torch.Tensor
-            Q-values for each action.
         """
         if np.random.rand() < self.parameter["rate"]:
             action = torch.tensor([np.random.choice(
@@ -217,57 +211,7 @@ class VideoDeepQ(torch.nn.Module):
         else:
             action = self(state).argmax(1)
 
-        return action
-
-    def observe(self, environment, states):
-        """
-        Observe the environment for n frames.
-
-        Parameters
-        ----------
-        environment : gymnasium.Env
-            The environment to observe.
-        states : torch.Tensor
-            The states of the environment from the previous step.
-
-        Returns
-        -------
-        action : torch.Tensor
-            The action taken.
-        states : torch.Tensor
-            The states of the environment.
-        rewards : torch.Tensor
-            The rewards of the environment.
-        terminated : bool
-            Whether the game is terminated.
-
-        Notes
-        -----
-        Something off with the `environment.step()`, as it needs to be repeated to work. Look
-        more into this.
-        """
-        action = self.action(states)
-
-        rewards = torch.tensor([0.0])
-        states = torch.zeros(self.shape)
-
-        for i in range(0, self.shape[2]):
-            new_state, reward, terminated, truncated, _ = environment.step(action.item())     # noqa
-            new_state = torch.tensor(new_state, dtype=torch.float32).view((1, 1, 210, 160))
-
-            rewards += reward
-            states[0, 0, i] = new_state
-
-        # See note above.
-        #
-        # for i in range(2, self.shape[2]):
-        #     new_state, reward, terminated, truncated, _ = environment.step(0)
-        #     new_state = torch.tensor(new_state, dtype=torch.float32).view((1, 1, 210, 160))
-        #
-        #     rewards += reward
-        #     states[0, 0, i] = new_state
-
-        return action.to(self.device), states, rewards, (terminated or truncated)             # noqa
+        return action.to(self.device)
 
     def learn(self, network):
         """
@@ -297,17 +241,15 @@ class VideoDeepQ(torch.nn.Module):
         memory = random.sample(self.memory["memory"],
                                min(self.memory["batch_size"], len(self.memory["memory"])))
 
-        states = torch.cat([torch.stack(game.state).squeeze()
-                            for game in memory]).unsqueeze(1)
-        actions = torch.cat([torch.stack(game.action)
-                             for game in memory]).to(self.device)
-        new_states = torch.cat([torch.stack(game.new_states).squeeze()
-                                for game in memory]).unsqueeze(1)
-        rewards = torch.cat([torch.stack(game.reward)
-                             for game in memory]).to(self.device)
+        _steps = [game.steps for game in memory]
+        steps = [sum(_steps[:i + 1]) - 1 for i in range(len(_steps))]
 
-        steps = [game.steps for game in memory]
-        steps = [sum(steps[:i+1])-1 for i in range(len(steps))]
+        with torch.cuda.amp.autocast():
+            # Using autocast to reduce memory usage and speed up training.
+            states = torch.cat([torch.stack(game.state).squeeze() for game in memory]).unsqueeze(1)
+            actions = torch.cat([torch.stack(game.action) for game in memory]).to(self.device)
+            _states = torch.cat([game.new_state for game in memory])
+            rewards = torch.cat([torch.stack(game.reward) for game in memory]).to(self.device)
 
         # EXPECTED FUTURE REWARDS
         # ------------------------------------------------------------------------------------------
@@ -315,12 +257,13 @@ class VideoDeepQ(torch.nn.Module):
         # achieved by reversely adding the observed reward and the discounted cumulative future
         # rewards. The rewards are then standardized.
 
-        _reward = 0
-        for i in reversed(range(len(rewards))):
-            _reward = 0 if i in steps else _reward
-            _reward = _reward * self.parameter["discount"] + rewards[i]
-            rewards[i] = _reward
-        rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-9)).view(-1, 1)
+            _rewards = torch.zeros_like(rewards)
+            for i in reversed(range(len(_rewards))):
+                _reward = _steps[steps.index(i)] if i in steps else _rewards[i + 1]
+                _rewards[i] = _reward * self.parameter["discount"] + rewards[i]
+
+            rewards = (((_rewards - _rewards.mean()) / (_rewards.std() + 1e-9))
+                       .view(-1, 1).to(self.device))
 
         # Q-LEARNING
         # ------------------------------------------------------------------------------------------
@@ -340,60 +283,66 @@ class VideoDeepQ(torch.nn.Module):
         #
         # where Q' is a copy of the agent, which is updated every C steps.
 
-        actual = self(states).gather(1, actions.view(-1, 1))
+            actual = self(states).gather(1, actions.view(-1, 1))
 
-        with torch.no_grad():
-            optimal = (rewards +
-                       self.parameter["gamma"] * network(new_states).max(1).values.view(-1, 1))
+            with torch.no_grad():
+                new_states = torch.roll(states, -1, 0)
+                new_states[torch.tensor(steps)] = _states
 
-        # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
-        for step in steps:
-            optimal[step] = rewards[step]
+                optimal = (rewards +
+                           self.parameter["gamma"] * network(new_states).max(1).values.view(-1, 1))
+
+            # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
+            for step in steps:
+                optimal[step] = rewards[step]
 
         # BACKPROPAGATION
         # ------------------------------------------------------------------------------------------
 
-        loss = torch.nn.functional.smooth_l1_loss(actual, optimal)
+            loss = torch.nn.functional.mse_loss(actual, optimal)
 
         self.optimizer.zero_grad()
         loss.backward()
 
-        # Clip gradients between -1 and +1, as per Google DeepMind's suggestion.
-        for param in self.parameters():
-            param.grad.data.clamp_(-1, 1)
+        # # Clamping gradients as per the Google DeepMind paper.
+        # for param in self.parameters():
+        #     param.grad.data.clamp_(-1, 1)
 
         self.optimizer.step()
 
         # EXPLORATION RATE DECAY
         # ------------------------------------------------------------------------------------------
 
-        self.parameter["rate"] = max(self.parameter["decay"] * self.parameter["rate"],
+        self.parameter["rate"] = max(self.parameter["rate"] - self.parameter["decay"],
                                      self.parameter["min"])
+
+        del states, actions, new_states, rewards, _reward, actual, optimal
+        torch.cuda.empty_cache()
 
         return (loss.item() / steps[-1]) * 10000
 
-    def remember(self, *args):
+    def remember(self, state, action, reward):
         """
-        Append state, action, new_state and reward along with the observerd states to agents
-        memory of the
-        current
-        game.
+        Append state, action and reward to agents memory of the current game.
 
         Parameters
         ----------
-        *args : list of torch.Tensor
-            Positional arguments to memorize.
-            Must be in the following order: state, action, new_state, reward.
+        state : torch.Tensor
+        action : torch.Tensor
+        reward : torch.Tensor
         """
-        self.memory["game"].append(self.Game(*args))
+        self.memory["game"].append((state, action, reward))
 
-    def memorize(self, steps):
+    def memorize(self, new_state, steps):
         """
         Append game to agent memory for mini-batch training.
 
         Parameters
         ----------
+        new_state : torch.Tensor
+            Last observed state in the game.
         steps : int
             Number of steps in the game (i.e., game length).
         """
-        self.memory["memory"].append(self.Memory(*zip(*self.memory["game"]), steps))
+        self.memory["memory"].append(self.Memory(*zip(*self.memory["game"]), new_state, steps))
+        self.memory["game"].clear()
