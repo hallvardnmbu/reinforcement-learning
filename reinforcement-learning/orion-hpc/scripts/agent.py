@@ -245,12 +245,10 @@ class VisionDeepQ(torch.nn.Module):
         _steps = [game.steps for game in memory]
         steps = [sum(_steps[:i + 1]) - 1 for i in range(len(_steps))]
 
-        with torch.cuda.amp.autocast():
-            # Using autocast to reduce memory usage and speed up training.
-            states = torch.cat([torch.stack(game.state).squeeze() for game in memory]).unsqueeze(1)
-            actions = torch.cat([torch.stack(game.action) for game in memory]).to(self.device)
-            _states = torch.cat([game.new_state for game in memory])
-            rewards = torch.cat([torch.stack(game.reward) for game in memory]).to(self.device)
+        states = torch.cat([torch.stack(game.state).squeeze() for game in memory]).unsqueeze(1)
+        actions = torch.cat([torch.stack(game.action) for game in memory]).to(self.device)
+        _states = torch.cat([game.new_state for game in memory])
+        rewards = torch.cat([torch.stack(game.reward) for game in memory]).to(self.device)
 
         # EXPECTED FUTURE REWARDS
         # ------------------------------------------------------------------------------------------
@@ -258,13 +256,12 @@ class VisionDeepQ(torch.nn.Module):
         # achieved by reversely adding the observed reward and the discounted cumulative future
         # rewards. The rewards are then standardized.
 
-            _rewards = torch.zeros_like(rewards)
-            for i in reversed(range(len(_rewards))):
-                _reward = _steps[steps.index(i)] if i in steps else _rewards[i + 1]
-                _rewards[i] = _reward * self.parameter["discount"] + rewards[i]
-
-            rewards = (((_rewards - _rewards.mean()) / (_rewards.std() + 1e-9))
-                       .view(-1, 1).to(self.device))
+        _reward = 0
+        for i in reversed(range(len(rewards))):
+            _reward = 0 if i in steps else _reward
+            _reward = _reward * self.parameter["discount"] + rewards[i]
+            rewards[i] = _reward
+        rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-7)).view(-1, 1)
 
         # Q-LEARNING
         # ------------------------------------------------------------------------------------------
@@ -283,6 +280,9 @@ class VisionDeepQ(torch.nn.Module):
         #  Q*(s, a) = r + gamma * max_a' Q'(s', a')
         #
         # where Q' is a copy of the agent, which is updated every C steps.
+
+        with torch.cuda.amp.autocast():
+            # Using autocast to reduce memory usage and speed up training.
 
             actual = self(states).gather(1, actions.view(-1, 1))
 
@@ -306,15 +306,15 @@ class VisionDeepQ(torch.nn.Module):
         loss.backward()
 
         # # Clamping gradients as per the Google DeepMind paper.
-        # for param in self.parameters():
-        #     param.grad.data.clamp_(-1, 1)
+        for param in self.parameters():
+            param.grad.data.clamp_(-1, 1)
 
         self.optimizer.step()
 
         # EXPLORATION RATE DECAY
         # ------------------------------------------------------------------------------------------
 
-        self.parameter["rate"] = max(self.parameter["decay"] - self.parameter["rate"],
+        self.parameter["rate"] = max(self.parameter["rate"] - self.parameter["decay"],
                                      self.parameter["min"])
 
         del states, actions, new_states, rewards, _reward, actual, optimal

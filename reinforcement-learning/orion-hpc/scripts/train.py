@@ -57,17 +57,17 @@ SHAPE = (1, 1, 210, 160)
 DISCOUNT = 0.98
 GAMMA = 0.99
 
-EXPLORATION_RATE = 0.6
+EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.01
-EXPLORATION_STEPS = 1500
+EXPLORATION_STEPS = 20000
 
-MINIBATCH = 32
+MINIBATCH = 48
 TRAIN_EVERY = 5
 START_TRAINING_AT = 2500
 
 REMEMBER_ALL = False
-MEMORY = 100
-RESET_Q_EVERY = 100
+MEMORY = 250
+RESET_Q_EVERY = 250
 
 NETWORK = {
     "input_channels": 1, "outputs": 5,
@@ -77,7 +77,7 @@ NETWORK = {
     "nodes": [64]
 }
 OPTIMIZER = {
-    "optimizer": torch.optim.Adam,
+    "optimizer": torch.optim.AdamW,
     "lr": 0.001,
     "hyperparameters": {}
 }
@@ -138,33 +138,13 @@ logger.debug("Target-network initialized")
 # Misc
 # --------------------------------------------------------------------------------------------------
 
-CHECKPOINT = GAMES // 40
+CHECKPOINT = GAMES // 25
 METRICS = {
     "steps": torch.zeros(GAMES),
     "losses": torch.zeros(GAMES // TRAIN_EVERY),
     "exploration": torch.zeros(GAMES),
     "rewards": torch.zeros(GAMES)
 }
-
-
-# Handling job cancellation
-# --------------------------------------------------------------------------------------------------
-
-def cancelled(signal, frame):
-    """
-    Save weights and exit when job is cancelled. Does not seem to work, as the job is killed
-    before the signal is handled. I.e., SLURM cancellation is too quick.
-    """
-    logger.info("Job cancelled. Saving weights...")
-    try:
-        torch.save(value_agent.state_dict(), f"./output/weights-{GAMES}.pth")
-        logger.info("Weights saved to ./output/weights-%s.pth", GAMES)
-    except Exception as e:
-        logger.error("Failed to save weights due to error: %s", str(e))
-    sys.exit(0)
-
-
-signal.signal(signal.SIGTERM, cancelled)
 
 # Training
 # --------------------------------------------------------------------------------------------------
@@ -216,8 +196,8 @@ for game in range(1, GAMES + 1):
     if REMEMBER_ALL or REWARDS > 0:
         logger.debug(" Memorizing game")
         value_agent.memorize(state, STEPS)
-        logger.info(" Memorized %s Memory: %s/%s Rewards: %s",
-                    game, len(value_agent.memory["memory"]), MEMORY, REWARDS)
+        logger.info("  %s > Rewards: %s Steps: %s Memory: %s %%",
+                    game, int(REWARDS), STEPS, len(value_agent.memory["memory"]) * 100 / MEMORY)
     else:
         logger.debug(" Not memorizing game")
         value_agent.memory["game"].clear()
@@ -249,7 +229,7 @@ for game in range(1, GAMES + 1):
     if game % CHECKPOINT == 0 or game == GAMES:
 
         if TRAINING:
-            logger.info(" Saving weights")
+            logger.info("Saving weights")
             torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
             logger.debug(" > Weights saved to ./output/weights-%s.pth", game)
 
@@ -342,7 +322,7 @@ state = torch.tensor(environment.reset()[0], dtype=torch.float32).view(SHAPE)
 images = []
 TERMINATED = TRUNCATED = False
 while not (TERMINATED or TRUNCATED):
-    action = value_agent(state).argmax(1).item()
+    action = value_agent.action(state).item()
 
     state, reward, TERMINATED, TRUNCATED, _ = environment.step(action)
     state = torch.tensor(state, dtype=torch.float32).view(SHAPE)
