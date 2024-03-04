@@ -6,10 +6,8 @@ Value-based vision agent in the tetris environment using PyTorch
 
 import os
 import re
-import sys
 import copy
 import time
-import signal
 import logging
 
 import torch
@@ -125,7 +123,7 @@ if files:
             value_agent.load_state_dict(weights)
             logger.info("Weights loaded from %s", file)
             break
-        except Exception as e:
+        except Exception as e:                                                                # noqa
             logger.error("Failed to load weights from %s due to error: %s", file, str(e))
 
 # Target-network

@@ -314,7 +314,7 @@ class VisionDeepQ(torch.nn.Module):
         # EXPLORATION RATE DECAY
         # ------------------------------------------------------------------------------------------
 
-        self.parameter["rate"] = max(self.parameter["decay"] - self.parameter["rate"],
+        self.parameter["rate"] = max(self.parameter["rate"] - self.parameter["decay"],
                                      self.parameter["min"])
 
         del states, actions, new_states, rewards, _reward, actual, optimal

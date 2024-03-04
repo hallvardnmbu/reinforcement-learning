@@ -76,22 +76,23 @@ class VisionDeepQ(torch.nn.Module):
                   "Using a default of 15 channels for the convolutional layer.")
             network["channels"] = [15] * network.get("kernels", 1)
 
-        channels = len(network["channels"])
-
         if "kernels" not in network:
             print(f"No kernels found in input.\n"
-                  f"Using a default kernel size 3 for all ({channels}) convolutional layers.")
-            network["kernels"] = [3] * channels
+                  f"Using a default kernel size 3 for all "
+                  f"({len(network['channels'])}) convolutional layers.")
+            network["kernels"] = [3] * len(network['channels'])
 
-        if len(network["kernels"]) != channels:
-            print(f"Number of kernels must be equal to the number of layers ({channels}).\n"
+        if len(network["kernels"]) != len(network['channels']):
+            print(f"Number of kernels must be equal to the number of layers "
+                  f"({len(network['channels'])}).\n"
                   f"Using default kernel size 3 for all layers.")
-            network["kernels"] = [3] * channels
+            network["kernels"] = [3] * len(network['channels'])
 
-        if len(network["strides"]) != channels:
-            print(f"Number of strides must be equal to the number of layers ({channels}).\n"
+        if len(network["strides"]) != len(network['channels']):
+            print(f"Number of strides must be equal to the number of layers "
+                  f"({len(network['channels'])}).\n"
                   f"Using default strides size 1 for all layers.")
-            network["strides"] = [1] * channels
+            network["strides"] = [1] * len(network['channels'])
 
         # Convolutional layers:
         # ------------------------------------------------------------------------------------------
@@ -106,8 +107,6 @@ class VisionDeepQ(torch.nn.Module):
         ):
             setattr(self, f"layer_{i}",
                     torch.nn.Conv2d(_in, _out, kernel_size=_kernel, stride=_stride))
-
-        self.convolutions = len(network["channels"]) - len(network.get("nodes", []))
 
         # Calculating the output shape of convolutional layers:
         # ------------------------------------------------------------------------------------------
@@ -141,20 +140,20 @@ class VisionDeepQ(torch.nn.Module):
         # Default discount factor is 0.99, as suggested by the Google DeepMind paper "Human-level
         # control through deep reinforcement learning" (2015).
 
-        eps_rate = other.get("exploration_rate", 0.9)
-        eps_steps = other.get("exploration_steps", 1500)
-        eps_min = other.get("exploration_min", 0.01)
         self.parameter = {
-            "rate": eps_rate,
-            "decay": (eps_rate - eps_min) / eps_steps,
-            "min": eps_min,
+            "rate": other.get("exploration_rate", 0.9),
+            "decay": (other.get("exploration_rate", 0.9) - other.get("exploration_min", 0.01))
+                     / other.get("exploration_steps", 1500),
+            "min": other.get("exploration_min", 0.01),
 
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
-        }
 
-        self.optimizer = optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
+            "convolutions": len(network["channels"]) - len(network.get("nodes", [])),
+
+            "optimizer": optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
                                                 **optimizer.get("hyperparameters", {}))
+        }
 
         self.memory = {
             "batch_size": batch_size,
@@ -182,7 +181,7 @@ class VisionDeepQ(torch.nn.Module):
 
         _output = torch.relu(self.layer_0(state))
         for i in range(1, len(self._modules) - 1):
-            if i > self.convolutions:
+            if i > self.parameter["convolutions"]:
                 _output = _output.view(_output.size(0), -1)
             _output = torch.relu(getattr(self, f"layer_{i}")(_output))
         _output = _output.view(_output.size(0), -1)
@@ -302,14 +301,14 @@ class VisionDeepQ(torch.nn.Module):
 
             loss = torch.nn.functional.mse_loss(actual, optimal)
 
-        self.optimizer.zero_grad()
+        self.parameter["optimizer"].zero_grad()
         loss.backward()
 
         # # Clamping gradients as per the Google DeepMind paper.
         for param in self.parameters():
             param.grad.data.clamp_(-1, 1)
 
-        self.optimizer.step()
+        self.parameter["optimizer"].step()
 
         # EXPLORATION RATE DECAY
         # ------------------------------------------------------------------------------------------

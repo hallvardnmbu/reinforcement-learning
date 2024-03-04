@@ -1,11 +1,23 @@
-gymnasium[all]  # May need to have: brew install swig
+# Might need: brew install swig libjpeg libpng
+
+gymnasium[all]
 
 torch
-mlx             # For Apple M chips
-
-jupyter
-chardet         # For jupyter and gymnasium display
 
 numpy
 matplotlib
-imageio         # For creating gifs
+imageio
+
+# Library for utilising Apple M chips
+# *-----------------------------------------*
+mlx
+
+# For notebook examples and gymnasium display
+# *-----------------------------------------*
+jupyter
+chardet
+
+# For transfer-learning.
+# *-----------------------------------------*
+torchvision
+pillow
