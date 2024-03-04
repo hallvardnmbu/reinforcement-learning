@@ -119,11 +119,11 @@ if files:
                        if re.search(r'/weights-(\d+).pth', x) is not None
                        else 0, reverse=True):
         try:
-            weights = torch.load(file)
+            weights = torch.load(file, map_location=value_agent.device)
             value_agent.load_state_dict(weights)
             logger.info("Weights loaded from %s", file)
             break
-        except Exception as e:
+        except RuntimeError as e:
             logger.error("Failed to load weights from %s due to error: %s", file, str(e))
 
 # Target-network
