@@ -142,9 +142,10 @@ class VisionDeepQ(torch.nn.Module):
 
         self.parameter = {
             "rate": other.get("exploration_rate", 0.9),
-            "decay": (other.get("exploration_rate", 0.9) - other.get("exploration_min", 0.01))
-                     / other.get("exploration_steps", 1500),
             "min": other.get("exploration_min", 0.01),
+            "decay":
+                (other.get("exploration_rate", 0.9) - other.get("exploration_min", 0.01))
+                / other.get("exploration_steps", 1500),
 
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
