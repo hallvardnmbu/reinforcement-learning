@@ -146,7 +146,7 @@ class PolicyGradient(torch.nn.Module):
         for i in reversed(range(len(rewards))):
             _reward = _reward * self.discount + rewards[i]
             rewards[i] = _reward
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-9)
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
 
         # POLICY GRADIENT
         # ------------------------------------------------------------------------------------------

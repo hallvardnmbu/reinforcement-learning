@@ -57,6 +57,20 @@ class VisionDeepQ(torch.nn.Module):
         other : dict
             Additional parameters.
 
+            exploration_rate : float, optional
+                Initial exploration rate.
+            exploration_min : float, optional
+                Minimum exploration rate.
+            exploration_steps : int, optional
+                Number of steps before `exploration_min` is reached.
+            punishment : float, optional
+                Punishment for losing a game.
+                E.g., `-10` reward for losing a game.
+            incentive : float, optional
+                Incentive scaling for rewards.
+                Boosts the rewards gained by a factor.
+            memory : int, optional
+                Number of recent games to keep in memory.
             discount : float, optional
                 Discount factor for future rewards.
                 --> 0: only consider immediate rewards
@@ -141,11 +155,16 @@ class VisionDeepQ(torch.nn.Module):
         # control through deep reinforcement learning" (2015).
 
         self.parameter = {
+            "shape": shape,
+
             "rate": other.get("exploration_rate", 0.9),
             "min": other.get("exploration_min", 0.01),
             "decay":
                 (other.get("exploration_rate", 0.9) - other.get("exploration_min", 0.01))
                 / other.get("exploration_steps", 1500),
+
+            "punishment": other.get("punishment", -1),
+            "incentive": other.get("incentive", 1),
 
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
@@ -179,6 +198,9 @@ class VisionDeepQ(torch.nn.Module):
         """
         state = state.to(self.device) / torch.tensor(255,
                                                      dtype=torch.float32, device=self.device)
+
+        state = torch.nn.functional.interpolate(state, 
+                                                size=self.parameter["shape"][2:])
 
         _output = torch.relu(self.layer_0(state))
         for i in range(1, len(self._modules) - 1):
@@ -258,9 +280,11 @@ class VisionDeepQ(torch.nn.Module):
 
         _reward = 0
         for i in reversed(range(len(rewards))):
-            _reward = 0 if i in steps else _reward
-            _reward = _reward * self.parameter["discount"] + rewards[i]
+            _reward = self.parameter["punishment"] if i in steps else _reward
+            _reward = (_reward * self.parameter["discount"]
+                       + rewards[i] * self.parameter["incentive"])
             rewards[i] = _reward
+
         rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-7)).view(-1, 1)
 
         # Q-LEARNING
@@ -305,7 +329,7 @@ class VisionDeepQ(torch.nn.Module):
         self.parameter["optimizer"].zero_grad()
         loss.backward()
 
-        # # Clamping gradients as per the Google DeepMind paper.
+        # Clamping gradients as per the Google DeepMind paper.
         for param in self.parameters():
             param.grad.data.clamp_(-1, 1)
 

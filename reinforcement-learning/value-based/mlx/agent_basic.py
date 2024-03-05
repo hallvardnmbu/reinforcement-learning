@@ -209,7 +209,7 @@ class DeepQ:
 
         mean = mx.mean(rewards)
         std = mx.sqrt(mx.sum((rewards - mean) ** 2)/rewards.shape[0])
-        rewards = (rewards - mean) / (std + 1e-9)
+        rewards = (rewards - mean) / (std + 1e-7)
 
         # GRADIENT
         # ------------------------------------------------------------------------------------------

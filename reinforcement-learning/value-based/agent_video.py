@@ -319,7 +319,7 @@ class VideoDeepQ(torch.nn.Module):
             _reward = 0 if i in steps else _reward
             _reward = _reward * self.parameter["discount"] + rewards[i]
             rewards[i] = _reward
-        rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-9)).view(-1, 1)
+        rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-7)).view(-1, 1)
 
         # Q-LEARNING
         # ------------------------------------------------------------------------------------------

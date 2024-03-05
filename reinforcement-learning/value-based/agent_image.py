@@ -56,6 +56,20 @@ class VisionDeepQ(torch.nn.Module):
         other : dict
             Additional parameters.
 
+            exploration_rate : float, optional
+                Initial exploration rate.
+            exploration_min : float, optional
+                Minimum exploration rate.
+            exploration_steps : int, optional
+                Number of steps before `exploration_min` is reached.
+            punishment : float, optional
+                Punishment for losing a game.
+                E.g., `-10` reward for losing a game.
+            incentive : float, optional
+                Incentive scaling for rewards.
+                Boosts the rewards gained by a factor.
+            memory : int, optional
+                Number of recent games to keep in memory.
             discount : float, optional
                 Discount factor for future rewards.
                 --> 0: only consider immediate rewards
@@ -106,8 +120,6 @@ class VisionDeepQ(torch.nn.Module):
             setattr(self, f"layer_{i}",
                     torch.nn.Conv2d(_in, _out, kernel_size=_kernel, stride=_stride))
 
-        self.convolutions = len(network["channels"]) - len(network.get("nodes", []))
-
         # Calculating the output shape of convolutional layers:
         # ------------------------------------------------------------------------------------------
 
@@ -140,20 +152,24 @@ class VisionDeepQ(torch.nn.Module):
         # Default discount factor is 0.99, as suggested by the Google DeepMind paper "Human-level
         # control through deep reinforcement learning" (2015).
 
-        eps_rate = other.get("exploration_rate", 0.9)
-        eps_steps = other.get("exploration_steps", 1500)
-        eps_min = other.get("exploration_min", 0.01)
         self.parameter = {
-            "rate": eps_rate,
-            "decay": (eps_rate - eps_min) / eps_steps,
-            "min": eps_min,
+            "rate": other.get("exploration_rate", 0.9),
+            "min": other.get("exploration_min", 0.01),
+            "decay":
+                (other.get("exploration_rate", 0.9) - other.get("exploration_min", 0.01))
+                / other.get("exploration_steps", 1500),
+
+            "punishment": other.get("punishment", -10),
+            "incentive": other.get("incentive", 100),
 
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
-        }
 
-        self.optimizer = optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
+            "convolutions": len(network["channels"]) - len(network.get("nodes", [])),
+
+            "optimizer": optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
                                                 **optimizer.get("hyperparameters", {}))
+        }
 
         self.memory = {
             "batch_size": batch_size,
@@ -257,13 +273,14 @@ class VisionDeepQ(torch.nn.Module):
         # achieved by reversely adding the observed reward and the discounted cumulative future
         # rewards. The rewards are then standardized.
 
-            _rewards = torch.zeros_like(rewards)
-            for i in reversed(range(len(_rewards))):
-                _reward = _steps[steps.index(i)] if i in steps else _rewards[i + 1]
-                _rewards[i] = _reward * self.parameter["discount"] + rewards[i]
+            _reward = 0
+            for i in reversed(range(len(rewards))):
+                _reward = self.parameter["punishment"] if i in steps else _reward
+                _reward = (_reward * self.parameter["discount"]
+                           + rewards[i] * self.parameter["incentive"])
+                rewards[i] = _reward
 
-            rewards = (((_rewards - _rewards.mean()) / (_rewards.std() + 1e-9))
-                       .view(-1, 1).to(self.device))
+            rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-7)).view(-1, 1)
 
         # Q-LEARNING
         # ------------------------------------------------------------------------------------------
@@ -301,14 +318,14 @@ class VisionDeepQ(torch.nn.Module):
 
             loss = torch.nn.functional.mse_loss(actual, optimal)
 
-        self.optimizer.zero_grad()
+        self.parameter["optimizer"].zero_grad()
         loss.backward()
 
         # # Clamping gradients as per the Google DeepMind paper.
-        # for param in self.parameters():
-        #     param.grad.data.clamp_(-1, 1)
+        for param in self.parameters():
+            param.grad.data.clamp_(-1, 1)
 
-        self.optimizer.step()
+        self.parameter["optimizer"].step()
 
         # EXPLORATION RATE DECAY
         # ------------------------------------------------------------------------------------------

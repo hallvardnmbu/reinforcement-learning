@@ -6,8 +6,10 @@ Value-based vision agent in the tetris environment using PyTorch
 
 import os
 import re
+import sys
 import copy
 import time
+import signal
 import logging
 
 import torch
@@ -51,28 +53,32 @@ environment.metadata["render_fps"] = 30
 
 GAMES = 50000
 SHAPE = (1, 1, 210, 160)
+RESHAPE = (1, 1, 100, 100)
 
-DISCOUNT = 0.98
+DISCOUNT = 0.95
 GAMMA = 0.99
 
-EXPLORATION_RATE = 1.0
-EXPLORATION_MIN = 0.01
-EXPLORATION_STEPS = 20000
+PUNISHMENT = -5
+INCENTIVE = 1
 
-MINIBATCH = 48
+MINIBATCH = 64
 TRAIN_EVERY = 5
 START_TRAINING_AT = 2500
 
+EXPLORATION_RATE = 0.88
+EXPLORATION_MIN = 0.01
+EXPLORATION_STEPS = 3000 // TRAIN_EVERY
+
 REMEMBER_ALL = False
 MEMORY = 250
-RESET_Q_EVERY = 250
+RESET_Q_EVERY = 150
 
 NETWORK = {
     "input_channels": 1, "outputs": 5,
-    "channels": [32, 64, 64],
-    "kernels": [5, 3, 3],
-    "strides": [3, 2, 1],
-    "nodes": [64]
+    "channels": [32, 32],
+    "kernels": [8, 5],
+    "strides": [4, 2],
+    # "nodes": []
 }
 OPTIMIZER = {
     "optimizer": torch.optim.AdamW,
@@ -88,12 +94,14 @@ logger.info("Initialising agent")
 value_agent = VisionDeepQ(
     network=NETWORK, optimizer=OPTIMIZER,
 
-    batch_size=MINIBATCH, shape=SHAPE,
+    batch_size=MINIBATCH, shape=RESHAPE,
 
     other={
         "discount": DISCOUNT, "gamma": GAMMA,
 
         "memory": MEMORY,
+
+        "incentive": INCENTIVE, "punishment": PUNISHMENT,
 
         "exploration_rate": EXPLORATION_RATE,
         "exploration_steps": EXPLORATION_STEPS,
@@ -136,7 +144,7 @@ logger.debug("Target-network initialized")
 # Misc
 # --------------------------------------------------------------------------------------------------
 
-CHECKPOINT = GAMES // 25
+CHECKPOINT = GAMES // 50
 METRICS = {
     "steps": torch.zeros(GAMES),
     "losses": torch.zeros(GAMES // TRAIN_EVERY),
@@ -194,8 +202,8 @@ for game in range(1, GAMES + 1):
     if REMEMBER_ALL or REWARDS > 0:
         logger.debug(" Memorizing game")
         value_agent.memorize(state, STEPS)
-        logger.info("  %s > Rewards: %s Steps: %s Memory: %s %%",
-                    game, int(REWARDS), STEPS, len(value_agent.memory["memory"]) * 100 / MEMORY)
+        logger.info("  %s > Rewards: %s Steps: %s Memory: %s",
+                    game, int(REWARDS), STEPS, len(value_agent.memory["memory"]))
     else:
         logger.debug(" Not memorizing game")
         value_agent.memory["game"].clear()

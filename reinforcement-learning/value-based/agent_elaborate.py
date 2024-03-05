@@ -49,10 +49,26 @@ class DeepQ(torch.nn.Module):
         other : dict
             Additional parameters.
 
+            exploration_rate : float, optional
+                Initial exploration rate.
+            exploration_min : float, optional
+                Minimum exploration rate.
+            exploration_steps : int, optional
+                Number of steps before `exploration_min` is reached.
+            punishment : float, optional
+                Punishment for losing a game.
+                E.g., `-10` reward for losing a game.
+            incentive : float, optional
+                Incentive scaling for rewards.
+                Boosts the rewards gained by a factor.
+            memory : int, optional
+                Number of recent games to keep in memory.
             discount : float, optional
                 Discount factor for future rewards.
                 --> 0: only consider immediate rewards
                 --> 1: consider all future rewards equally
+            gamma : float, optional
+                Discount factor for Q-learning.
         """
         super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -72,17 +88,22 @@ class DeepQ(torch.nn.Module):
         # Default discount factor is 0.99, as suggested by the Google DeepMind paper "Human-level
         # control through deep reinforcement learning" (2015).
 
-        self.explore = {
+        self.parameter = {
             "rate": other.get("exploration_rate", 0.9),
-            "decay": other.get("exploration_decay", 0.999),
             "min": other.get("exploration_min", 0.01),
+            "decay":
+                (other.get("exploration_rate", 0.9) - other.get("exploration_min", 0.01))
+                / other.get("exploration_steps", 1500),
+
+            "punishment": other.get("punishment", -10),
+            "incentive": other.get("incentive", 100),
 
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
-        }
 
-        self.optimizer = optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
+            "optimizer": optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
                                                 **optimizer.get("hyperparameters", {}))
+        }
 
         self.batch_size = batch_size
         self.memory = deque(maxlen=other.get("memory", 2500))
@@ -130,8 +151,7 @@ class DeepQ(torch.nn.Module):
         actions : torch.Tensor
             Q-values for each action.
         """
-
-        if np.random.rand() < self.explore["rate"]:
+        if np.random.rand() < self.parameter["rate"]:
             action = torch.tensor([np.random.choice(
                 range(next(reversed(self._modules.values())).out_features)
             )], dtype=torch.long)
@@ -183,10 +203,12 @@ class DeepQ(torch.nn.Module):
 
         _reward = 0
         for i in reversed(range(len(rewards))):
-            _reward = 0 if i in steps else _reward
-            _reward = _reward * self.explore["discount"] + rewards[i]
+            _reward = self.parameter["punishment"] if i in steps else _reward
+            _reward = (_reward * self.parameter["discount"]
+                       + rewards[i] * self.parameter["incentive"])
             rewards[i] = _reward
-        rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-9)).view(-1, 1)
+
+        rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-7)).view(-1, 1)
 
         # Q-LEARNING
         # ------------------------------------------------------------------------------------------
@@ -210,7 +232,7 @@ class DeepQ(torch.nn.Module):
 
         with torch.no_grad():
             optimal = (rewards +
-                       self.explore["gamma"] * network(new_states).max(1).values.view(-1, 1))
+                       self.parameter["gamma"] * network(new_states).max(1).values.view(-1, 1))
 
         # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
         for step in steps:
@@ -219,17 +241,22 @@ class DeepQ(torch.nn.Module):
         # BACKPROPAGATION
         # ------------------------------------------------------------------------------------------
 
-        loss = torch.nn.functional.smooth_l1_loss(actual, optimal)
+        loss = torch.nn.functional.mse_loss(actual, optimal)
 
-        self.optimizer.zero_grad()
+        self.parameter["optimizer"].zero_grad()
         loss.backward()
-        self.optimizer.step()
+
+        # Clamping gradients as per the Google DeepMind paper.
+        for param in self.parameters():
+            param.grad.data.clamp_(-1, 1)
+
+        self.parameter["optimizer"].step()
 
         # EXPLORATION RATE DECAY
         # ------------------------------------------------------------------------------------------
 
-        self.explore["rate"] = max(self.explore["decay"] * self.explore["rate"],
-                                   self.explore["min"])
+        self.parameter["rate"] = max(self.parameter["rate"] - self.parameter["decay"],
+                                     self.parameter["min"])
 
         del states, actions, new_states, rewards, _reward, actual, optimal
 
