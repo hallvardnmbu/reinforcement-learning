@@ -1,7 +1,8 @@
 """
 Value-based agent for reinforcement learning.
 
-Useful for environments with `rgb` or `grayscale` state spaces (from `gymnasium`).
+Useful for environments with `rgb` or `grayscale` state spaces (from `gymnasium`). See
+`value_simple.py` or `value_advanced.py` for other implementations.
 """
 
 from collections import deque, namedtuple
@@ -84,41 +85,32 @@ class VisionDeepQ(torch.nn.Module):
         # ------------------------------------------------------------------------------------------
         # The following makes sure the input shapes are correct, and corrects them if not.
 
-        if "channels" not in network:
-            print("No channels found in input.\n"
-                  "Using a default of 15 channels for the convolutional layer.")
-            network["channels"] = [15] * network.get("kernels", 1)
+        network.setdefault("channels", [32] * len(network.get("kernels", [1])))
+        network.setdefault("kernels", [3] * len(network["channels"]))
+        network.setdefault("strides", [1] * len(network["channels"]))
+        network.setdefault("padding", ["same"] * len(network["channels"]))
 
-        channels = len(network["channels"])
+        if len(network["kernels"]) != len(network['channels']):
+            network["kernels"] = [3] * len(network['channels'])
 
-        if "kernels" not in network:
-            print(f"No kernels found in input.\n"
-                  f"Using a default kernel size 3 for all ({channels}) convolutional layers.")
-            network["kernels"] = [3] * channels
-
-        if len(network["kernels"]) != channels:
-            print(f"Number of kernels must be equal to the number of layers ({channels}).\n"
-                  f"Using default kernel size 3 for all layers.")
-            network["kernels"] = [3] * channels
-
-        if len(network["strides"]) != channels:
-            print(f"Number of strides must be equal to the number of layers ({channels}).\n"
-                  f"Using default strides size 1 for all layers.")
-            network["strides"] = [1] * channels
+        if len(network["strides"]) != len(network['channels']):
+            network["strides"] = [1] * len(network['channels'])
 
         # Convolutional layers:
         # ------------------------------------------------------------------------------------------
 
-        for i, (_in, _out, _kernel, _stride) in (
+        for i, (_in, _out, _kernel, _stride, _padding) in (
                 enumerate(zip(
                     [network["input_channels"]] + network["channels"][:-1],
                     network["channels"],
                     network["kernels"],
-                    network["strides"]
+                    network["strides"],
+                    network["padding"]
                 ))
         ):
             setattr(self, f"layer_{i}",
-                    torch.nn.Conv2d(_in, _out, kernel_size=_kernel, stride=_stride))
+                    torch.nn.Conv2d(_in, _out,
+                                    kernel_size=_kernel, stride=_stride, padding=_padding))
 
         # Calculating the output shape of convolutional layers:
         # ------------------------------------------------------------------------------------------
@@ -153,14 +145,16 @@ class VisionDeepQ(torch.nn.Module):
         # control through deep reinforcement learning" (2015).
 
         self.parameter = {
+            "shape": shape,
+
             "rate": other.get("exploration_rate", 0.9),
             "min": other.get("exploration_min", 0.01),
             "decay":
                 (other.get("exploration_rate", 0.9) - other.get("exploration_min", 0.01))
                 / other.get("exploration_steps", 1500),
 
-            "punishment": other.get("punishment", -10),
-            "incentive": other.get("incentive", 100),
+            "punishment": other.get("punishment", -1),
+            "incentive": other.get("incentive", 1),
 
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
@@ -192,12 +186,9 @@ class VisionDeepQ(torch.nn.Module):
         -------
         output : torch.Tensor
         """
-        state = state.to(self.device) / torch.tensor(255,
-                                                     dtype=torch.float32, device=self.device)
-
-        _output = torch.relu(self.layer_0(state))
+        _output = torch.relu(self.layer_0(state.to(self.device)))
         for i in range(1, len(self._modules) - 1):
-            if i > self.convolutions:
+            if i > self.parameter["convolutions"]:
                 _output = _output.view(_output.size(0), -1)
             _output = torch.relu(getattr(self, f"layer_{i}")(_output))
         _output = _output.view(_output.size(0), -1)
@@ -205,6 +196,28 @@ class VisionDeepQ(torch.nn.Module):
         output = getattr(self, f"layer_{len(self._modules)-1}")(_output)
 
         return output
+
+    @staticmethod
+    def preprocess(state, shape):
+        """
+        Preprocess the observed state by normalizing and cropping it. The cropping is done as
+        follows: [:,:,27:203,22:64]. This represents ONLY the game-area for the Tetris environment.
+
+        Parameters
+        ----------
+        state : torch.Tensor
+            Observed state.
+        shape : tuple
+            Original shape of the state.
+
+        Returns
+        -------
+        output : torch.Tensor
+        """
+        state = (torch.tensor(state, dtype=torch.float32).view(shape) /
+                 torch.tensor(255, dtype=torch.float32))[:, :, 27:203, 22:64]
+
+        return state
 
     def action(self, state):
         """
@@ -223,11 +236,11 @@ class VisionDeepQ(torch.nn.Module):
         if np.random.rand() < self.parameter["rate"]:
             action = torch.tensor([np.random.choice(
                 next(reversed(self._modules.values())).out_features
-            )], dtype=torch.long)
+            )], dtype=torch.long, device=self.device)
         else:
             action = self(state).argmax(1)
 
-        return action.to(self.device)
+        return action
 
     def learn(self, network):
         """
@@ -243,11 +256,6 @@ class VisionDeepQ(torch.nn.Module):
         loss : float
             Relative loss.
 
-        Raises
-        ------
-        ValueError
-            If no reference network is passed.
-
         Notes
         -----
         In order for the agent to best learn the optimal actions, it is common to evaluate the
@@ -260,12 +268,12 @@ class VisionDeepQ(torch.nn.Module):
         _steps = [game.steps for game in memory]
         steps = [sum(_steps[:i + 1]) - 1 for i in range(len(_steps))]
 
-        with torch.cuda.amp.autocast():
-            # Using autocast to reduce memory usage and speed up training.
-            states = torch.cat([torch.stack(game.state).squeeze() for game in memory]).unsqueeze(1)
-            actions = torch.cat([torch.stack(game.action) for game in memory]).to(self.device)
-            _states = torch.cat([game.new_state for game in memory])
-            rewards = torch.cat([torch.stack(game.reward) for game in memory]).to(self.device)
+        states = torch.cat([torch.stack(game.state).squeeze() for game in memory]).unsqueeze(1)
+        actions = torch.cat([torch.stack(game.action) for game in memory])
+        _states = torch.cat([game.new_state for game in memory])
+        rewards = torch.cat([torch.stack(game.reward).detach() for game in memory])
+
+        del memory, _steps
 
         # EXPECTED FUTURE REWARDS
         # ------------------------------------------------------------------------------------------
@@ -273,14 +281,14 @@ class VisionDeepQ(torch.nn.Module):
         # achieved by reversely adding the observed reward and the discounted cumulative future
         # rewards. The rewards are then standardized.
 
-            _reward = 0
-            for i in reversed(range(len(rewards))):
-                _reward = self.parameter["punishment"] if i in steps else _reward
-                _reward = (_reward * self.parameter["discount"]
-                           + rewards[i] * self.parameter["incentive"])
-                rewards[i] = _reward
+        _reward = 0
+        for i in reversed(range(len(rewards))):
+            _reward = self.parameter["punishment"] if i in steps else _reward
+            _reward = (_reward * self.parameter["discount"]
+                       + rewards[i] * self.parameter["incentive"])
+            rewards[i] = _reward
 
-            rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-7)).view(-1, 1)
+        rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-7)).view(-1, 1).to(self.device)
 
         # Q-LEARNING
         # ------------------------------------------------------------------------------------------
@@ -298,16 +306,21 @@ class VisionDeepQ(torch.nn.Module):
         #
         #  Q*(s, a) = r + gamma * max_a' Q'(s', a')
         #
-        # where Q' is a copy of the agent, which is updated every C steps.
+        # where Q' is a copy of the agent, which is updated every C steps. In addition,
+        # `torch.cuda.amp.autocast()` is used to reduce memory usage and thus speed up training.
 
+        with torch.cuda.amp.autocast():
             actual = self(states).gather(1, actions.view(-1, 1))
 
             with torch.no_grad():
                 new_states = torch.roll(states, -1, 0)
                 new_states[torch.tensor(steps)] = _states
+                new_states = new_states.detach()
 
-                optimal = (rewards +
-                           self.parameter["gamma"] * network(new_states).max(1).values.view(-1, 1))
+                optimal = (
+                        rewards +
+                        self.parameter["gamma"] * network(new_states).max(1).values.view(-1, 1)
+                )
 
             # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
             for step in steps:
@@ -321,7 +334,7 @@ class VisionDeepQ(torch.nn.Module):
         self.parameter["optimizer"].zero_grad()
         loss.backward()
 
-        # # Clamping gradients as per the Google DeepMind paper.
+        # Clamping gradients as per the Google DeepMind paper.
         for param in self.parameters():
             param.grad.data.clamp_(-1, 1)
 
@@ -333,7 +346,7 @@ class VisionDeepQ(torch.nn.Module):
         self.parameter["rate"] = max(self.parameter["rate"] - self.parameter["decay"],
                                      self.parameter["min"])
 
-        del states, actions, new_states, rewards, _reward, actual, optimal
+        del states, actions, new_states, rewards, actual, optimal
         torch.cuda.empty_cache()
 
         return (loss.item() / steps[-1]) * 10000
@@ -362,4 +375,3 @@ class VisionDeepQ(torch.nn.Module):
             Number of steps in the game (i.e., game length).
         """
         self.memory["memory"].append(self.Memory(*zip(*self.memory["game"]), new_state, steps))
-        self.memory["game"].clear()
