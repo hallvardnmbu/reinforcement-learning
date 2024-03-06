@@ -43,8 +43,9 @@ Notes
 
 The checkpointed weights are saved to `./output/weights-{game-number}.pth`.
 
-The log messages (i.e., info and error messages) are written to `output/debug.txt`. In order 
-to view more detailed messages, set the log-level to debug in `train.py`. 
+The log messages (i.e., info and error messages) are written to `output/info.txt`.
 
 Printouts are saved to `output/print.out`, but the most informative output is the displayed in 
-`output/debug.txt`.
+`output/info.txt`.
+
+Metrics throughout training is saved to `output/metrics.csv`.
