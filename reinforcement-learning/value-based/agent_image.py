@@ -54,7 +54,7 @@ class VisionDeepQ(torch.nn.Module):
             Number of samples to train on.
         shape : tuple of int, optional
             Shape of the input state space.
-        other : dict
+        other
             Additional parameters.
 
             exploration_rate : float, optional
@@ -370,8 +370,6 @@ class VisionDeepQ(torch.nn.Module):
         Parameters
         ----------
         new_state : torch.Tensor
-            Last observed state in the game.
         steps : int
-            Number of steps in the game (i.e., game length).
         """
         self.memory["memory"].append(self.Memory(*zip(*self.memory["game"]), new_state, steps))

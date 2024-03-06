@@ -35,7 +35,7 @@ class PolicyGradient(torch.nn.Module):
                 Learning rate for the optimizer.
             **hyperparameters : dict, optional
                 Additional hyperparameters for the optimizer.
-        other : dict
+        other
             Additional parameters.
 
             discount : float, optional

@@ -53,7 +53,7 @@ class TransferDeepQ:
             Number of samples to train on.
         shape : tuple of int, optional
             Shape of the input state space.
-        other : dict
+        other
             Additional parameters.
 
             discount : float, optional

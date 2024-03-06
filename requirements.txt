@@ -5,6 +5,7 @@ gymnasium[all]
 torch
 
 numpy
+pandas
 matplotlib
 imageio
 
@@ -16,8 +17,8 @@ mlx
 # *-----------------------------------------*
 jupyter
 chardet
+tqdm
 
 # For transfer-learning.
 # *-----------------------------------------*
 torchvision
-pillow

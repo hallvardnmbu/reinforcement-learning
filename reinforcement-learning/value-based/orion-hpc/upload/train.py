@@ -4,9 +4,9 @@ Orion HPC training script.
 Value-based vision agent in the tetris environment using PyTorch
 """
 
-import os
 import re
 import csv
+import glob
 import copy
 import time
 import logging
@@ -37,13 +37,14 @@ environment.metadata["render_fps"] = 30
 #   SHAPE : input shape of the network (batch, channels, height, width)
 #   DISCOUNT : discount rate for rewards
 #   GAMMA : discount rate for Q-learning
+#   PUNISHMENT : punishment for losing
+#   INCENTIVE : incentive for rewards
 #   EXPLORATION_RATE : initial exploration rate
 #   EXPLORATION_MIN : minimum exploration rate
 #   EXPLORATION_STEPS : number of games to decay exploration rate from `RATE` to `MIN`
 #   MINIBATCH : size of the minibatch
 #   TRAIN_EVERY : train the network every n games
 #   START_TRAINING_AT : start training after n games
-#   REMEMBER_ALL : only remember games with rewards
 #   MEMORY : size of the agents internal memory
 #   RESET_Q_EVERY : update target-network every n games
 
@@ -67,7 +68,6 @@ EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.001
 EXPLORATION_STEPS = 2000 // TRAIN_EVERY
 
-REMEMBER_ALL = False
 MEMORY = 250
 RESET_Q_EVERY = TRAIN_EVERY * 25
 
@@ -91,37 +91,35 @@ METRICS = "./output/metrics.csv"
 # --------------------------------------------------------------------------------------------------
 
 logger.info("Initialising agent")
-
 value_agent = VisionDeepQ(
     network=NETWORK, optimizer=OPTIMIZER,
 
     batch_size=MINIBATCH, shape=RESHAPE,
 
-    other={
-        "discount": DISCOUNT, "gamma": GAMMA,
+    memory=MEMORY,
 
-        "memory": MEMORY,
+    discount=DISCOUNT, gamma=GAMMA,
 
-        "incentive": INCENTIVE, "punishment": PUNISHMENT,
+    punishment=PUNISHMENT, incentive=INCENTIVE,
 
-        "exploration_rate": EXPLORATION_RATE,
-        "exploration_steps": EXPLORATION_STEPS,
-        "exploration_min": EXPLORATION_MIN
-    }
+    exploration_rate=EXPLORATION_RATE,
+    exploration_steps=EXPLORATION_STEPS,
+    exploration_min=EXPLORATION_MIN,
 )
+
+with open(METRICS, "w", newline="") as file:
+    metric = csv.writer(file)
+    metric.writerow(["game", "steps", "loss", "exploration", "reward"])
 
 # Searching for and loading previous weights
 # --------------------------------------------------------------------------------------------------
 # Searches for the pattern "weights-{CHECKPOINT}.pth" in the current directory and
 # subdirectories, and loads the weights from the file with the highest checkpoint.
 
-files = [os.path.join(root, f)
-         for root, dirs, files in os.walk(".")
-         for f in files if f.endswith('.pth')]
+files = glob.glob("**/*.pth", recursive=True)
 if files:
-    for file in sorted(files,
-                       key=lambda x: int(re.search(r'/weights-(\d+).pth', x).group(1))
-                       if re.search(r'/weights-(\d+).pth', x) is not None
+    for file in sorted(files, key=lambda x: int(re.search(r'/weights-(\d+).pth', x).group(1))
+                       if re.search(r'/weights-(\d+).pth', x)
                        else 0, reverse=True):
         try:
             weights = torch.load(file, map_location=value_agent.device)
@@ -136,35 +134,20 @@ if files:
 
 _value_agent = copy.deepcopy(value_agent)
 
-# Metrics
-# --------------------------------------------------------------------------------------------------
-
-FILE = open(METRICS, "w", newline="")
-METRIC = csv.writer(FILE)
-METRIC.writerow(["game", "steps", "loss", "exploration", "reward"])
-
 # Training
 # --------------------------------------------------------------------------------------------------
 
 logger.info("Starting playing")
+start = time.time()
+
 TRAINING = False
 _STEPS = _LOSS = _REWARD = 0
-
-start = time.time()
 for game in range(1, GAMES + 1):
-    if not TRAINING and game >= START_TRAINING_AT:
-        logger.info("Starting training")
-        TRAINING = True
-
     state = value_agent.preprocess(environment.reset()[0], SHAPE)
 
+    STEPS = REWARDS = 0
     TERMINATED = TRUNCATED = False
-
-    # LEARNING FROM GAME
-    # ----------------------------------------------------------------------------------------------
-
-    STEPS = 0
-    REWARDS = 0
+    TRAINING = True if (not TRAINING and game >= START_TRAINING_AT) else TRAINING
     while not (TERMINATED or TRUNCATED):
         action = value_agent.action(state).detach()
 
@@ -174,11 +157,10 @@ for game in range(1, GAMES + 1):
         value_agent.remember(state, action, torch.tensor([reward]))
 
         state = new_state
-
         REWARDS += reward
         STEPS += 1
 
-    if REMEMBER_ALL or REWARDS > 0:
+    if REWARDS > 0:
         value_agent.memorize(state, STEPS)
         logger.info("  %s > Rewards: %s Steps: %s Memory: %s",
                     game, int(REWARDS), STEPS, len(value_agent.memory["memory"]))
@@ -189,6 +171,8 @@ for game in range(1, GAMES + 1):
         loss = value_agent.learn(network=_value_agent)
         EXPLORATION_RATE = value_agent.parameter["rate"]
         _LOSS += loss
+    _REWARD += REWARDS
+    _STEPS += STEPS
 
     if game % RESET_Q_EVERY == 0 and TRAINING:
         logger.info(" Resetting target-network")
@@ -196,13 +180,14 @@ for game in range(1, GAMES + 1):
 
     # METRICS
     # ----------------------------------------------------------------------------------------------
+    # Saves the metrics to a CSV file. Logs the progress of the training and saves the current
+    # weights every `CHECKPOINT` games.
 
-    METRIC.writerow([game, STEPS, loss, EXPLORATION_RATE, REWARDS])
-    _REWARD += REWARDS
-    _STEPS += STEPS
+    with open(METRICS, "a", newline="") as file:
+        metric = csv.writer(file)
+        metric.writerow([game, STEPS, loss, EXPLORATION_RATE, REWARDS])
 
     if game % CHECKPOINT == 0 or game == GAMES:
-
         logger.info("Game %s (progress %s %%, random %s %%)",
                     game, int(game * 100 / GAMES), int(EXPLORATION_RATE * 100))
         logger.info(" > Average steps: %s", int(_STEPS / CHECKPOINT))
@@ -214,12 +199,5 @@ for game in range(1, GAMES + 1):
             logger.info("Saving weights")
             torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
 
-FILE.close()
 logger.info("Total training time: %s seconds", round(time.time() - start, 2))
-
-torch.save(value_agent.state_dict(), f"./output/weights-{GAMES}.pth")
-logger.info(" > Saved final weights to ./output/weights-%s.pth", GAMES)
-
 logger.info("Metrics saved to %s", METRICS)
-
-logger.info("Done")
