@@ -1,8 +1,7 @@
 """
 Value-based agent for reinforcement learning.
 
-Useful for environments with `rgb` or `grayscale` state spaces (from `gymnasium`). See
-`value_simple.py` or `value_advanced.py` for other implementations.
+Useful for environments with `rgb` or `grayscale` state spaces (from `gymnasium`).
 """
 
 from collections import deque, namedtuple
@@ -21,7 +20,7 @@ class VisionDeepQ(torch.nn.Module):
                  network,
                  optimizer,
                  batch_size=32,
-                 shape=(1, 1, 210, 160),
+                 shape=(1, 4, 210, 160),
                  **other):
         """
         Value-based vision agent for reinforcement learning.
@@ -197,28 +196,6 @@ class VisionDeepQ(torch.nn.Module):
 
         return output
 
-    @staticmethod
-    def preprocess(state, shape):
-        """
-        Preprocess the observed state by normalizing and cropping it. The cropping is done as
-        follows: [:,:,27:203,22:64]. This represents ONLY the game-area for the Tetris environment.
-
-        Parameters
-        ----------
-        state : torch.Tensor
-            Observed state.
-        shape : tuple
-            Original shape of the state.
-
-        Returns
-        -------
-        output : torch.Tensor
-        """
-        state = (torch.tensor(state, dtype=torch.float32).view(shape) /
-                 torch.tensor(255, dtype=torch.float32))[:, :, 27:203, 22:64]
-
-        return state
-
     def action(self, state):
         """
         Greedy action selection with stochastic exploration.
@@ -241,6 +218,70 @@ class VisionDeepQ(torch.nn.Module):
             action = self(state).argmax(1)
 
         return action
+
+    @staticmethod
+    def preprocess(state, shape):
+        """
+        Preprocess the observed state by normalizing and cropping it. The cropping is done as
+        follows: [:,:,27:203,22:64] in addition to max-pooling with a kernel of size `2`. This
+        represents ONLY the game-area for the Tetris environment.
+
+        Parameters
+        ----------
+        state : torch.Tensor
+            Observed state.
+        shape : tuple of int
+            Shape of the input state space.
+
+        Returns
+        -------
+        output : torch.Tensor
+        """
+        state = (torch.tensor(state, dtype=torch.float32).view(shape) /
+                 torch.tensor(255, dtype=torch.float32))[:, :, 27:203, 22:64]
+        state = torch.nn.functional.max_pool2d(state, 2)
+
+        return state
+
+    def observe(self, environment, states, shape):
+        """
+        Observe the environment for n frames.
+
+        Parameters
+        ----------
+        environment : gymnasium.Env
+            The environment to observe.
+        states : torch.Tensor
+            The states of the environment from the previous step.
+        shape : tuple of int
+            Shape of the input state space.
+
+        Returns
+        -------
+        action : torch.Tensor
+            The action taken.
+        states : torch.Tensor
+            The states of the environment.
+        rewards : torch.Tensor
+            The rewards of the environment.
+        done : bool
+            Whether the game is terminated.
+        """
+        action = self.action(states)
+
+        done = False
+        rewards = torch.tensor([0.0])
+        states = torch.zeros(self.parameter["shape"])
+
+        for i in range(0, self.parameter["shape"][1]):
+            new_state, reward, terminated, truncated, _ = environment.step(action.item())
+            new_state = self.preprocess(new_state, shape)
+
+            rewards += reward
+            states[0, i] = new_state
+            done = (terminated or truncated) if not done else done
+
+        return action, states, rewards, done
 
     def learn(self, network):
         """
@@ -268,7 +309,7 @@ class VisionDeepQ(torch.nn.Module):
         _steps = [game.steps for game in memory]
         steps = [sum(_steps[:i + 1]) - 1 for i in range(len(_steps))]
 
-        states = torch.cat([torch.stack(game.state).squeeze() for game in memory]).unsqueeze(1)
+        states = torch.cat([torch.stack(game.state).squeeze() for game in memory])
         actions = torch.cat([torch.stack(game.action) for game in memory])
         _states = torch.cat([game.new_state for game in memory])
         rewards = torch.cat([torch.stack(game.reward).detach() for game in memory])
@@ -288,7 +329,7 @@ class VisionDeepQ(torch.nn.Module):
                        + rewards[i] * self.parameter["incentive"])
             rewards[i] = _reward
 
-        rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-7)).view(-1, 1).to(self.device)
+        rewards = ((rewards - rewards.mean()) / (rewards.std() + 1e-9)).view(-1, 1).to(self.device)
 
         # Q-LEARNING
         # ------------------------------------------------------------------------------------------
