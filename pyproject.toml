@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "ML_Project"
+version = "0.1.0"
+description = "Hallvard and Leo's machine learning endeavor"
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [
+    { include = "reinforcement_learning", from = "src" },
+    { include = "transformers", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+jupyter = "^1.0.0"
+gymnasium = "^0.29.1"
+matplotlib = "^3.8.2"
+torch = "^2.2.0"
+numpy = "^1.26.4"
+imageio = "^2.33.1"
+pandas = "^2.2.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
