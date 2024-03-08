@@ -72,7 +72,7 @@ def gif(environment, agent, path="./live-preview.gif", duration=25):
     while not (terminated or truncated):
         action = agent(state).argmax().item()
 
-        state, reward, terminated, truncated, _ = environment.step(action)
+        state, _, terminated, truncated, _ = environment.step(action)
         state = torch.tensor(state, dtype=torch.float32)
 
         images.append(environment.render())

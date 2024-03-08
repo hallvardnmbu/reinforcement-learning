@@ -137,7 +137,7 @@ def gif(environment, agent, path="./live-preview.gif", skip=4, duration=25):
     images = []
     done = False
     while not done:
-        _, new_states, _, done = agent.observe(environment, states, skip)
+        _, states, _, done = agent.observe(environment, states, skip)
 
         images.append(environment.render())
     _ = imageio.mimsave(path, images, duration=duration)
