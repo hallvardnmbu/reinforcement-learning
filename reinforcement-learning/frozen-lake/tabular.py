@@ -1,9 +1,10 @@
-import pandas as pd
+"""Classic-style tabular Q learning agent for small, discrete-state games."""
+
 import numpy as np
+import pandas as pd
 
 
 class TabularQAgent:
-    """Classic-style tabular Q learning agent for small, discrete-state games."""
     def __init__(self, state_space, action_space, lr,
                  gamma, epsilon, epsilon_decay, epsilon_minimum):
         """
@@ -25,9 +26,6 @@ class TabularQAgent:
             The rate at which the exploration rate decays over time.
         epsilon_minimum : float
             The minimum exploration rate.
-
-        Returns:
-        - None
         """
         self.state_space = state_space
         self.action_space = action_space
@@ -45,11 +43,15 @@ class TabularQAgent:
         Selects an action to take based on the given state.
         Uses simple greedy-epsilon algorithm.
 
-        Parameters:
-            state (numpy.ndarray): The current state of the environment.
+        Parameters
+        ----------
+        state : int
+            The current state of the environment.
 
-        Returns:
-            int: The selected action to take.
+        Returns
+        -------
+        int
+            The selected action to take.
         """
         if np.random.random() > self.epsilon:
             action = self.greedy_action(state)
@@ -60,8 +62,8 @@ class TabularQAgent:
 
     def decrement_epsilon(self):
         """
-        Decrements the value of epsilon by the epsilon_decay rate,
-        but ensures it doesn't go below epsilon_minimum.
+        Decrements the value of epsilon by the epsilon_decay rate, but ensures it doesn't go
+        below epsilon_minimum.
         """
         self.epsilon = max(self.epsilon_minimum, self.epsilon - self.epsilon_decay)
 
@@ -69,11 +71,15 @@ class TabularQAgent:
         """
         Selects the action with the highest Q-value for the given state.
 
-        Parameters:
-            state (int): The current state.
+        Parameters
+        ----------
+        state : int
+            The current state.
 
-        Returns:
-            int: The selected action.
+        Returns
+        -------
+        int
+            The selected action.
         """
         action = self.Q_table.iloc[:, state].idxmax()
         return int(action.split(" ")[-1])
@@ -92,11 +98,6 @@ class TabularQAgent:
             The reward received for taking the action.
         new_state : int
             The state the agent is in after taking the action.
-
-        Returns
-        -------
-        None
-            This method updates the Q-table in-place and has no return value.
         """
         Q_observed = reward + self.gamma * self.Q_table.iloc[:, new_state].max()
         Q_expected = self.Q_table.at[f"Action {action}", f"State {old_state}"]
