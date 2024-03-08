@@ -24,17 +24,16 @@ def gif(
 def gif_stack(
         environment,
         agent,
-        shape=(1, 1, 210, 160),
-        reshape=(1, 4, 88, 21),
-        path="./output/live-preview.gif"
+        path="./output/live-preview.gif",
+        skip=4
 ):
-    initial = agent.preprocess(environment.reset()[0], shape)
-    states = torch.cat([initial] * reshape[1], dim=1)
+    initial = agent.preprocess(environment.reset()[0])
+    states = torch.cat([initial] * agent.shape["reshape"][1], dim=1)
 
     images = []
     done = False
     while not done:
-        _, new_states, _, done = agent.observe(environment, states, shape)
+        _, new_states, _, done = agent.observe(environment, states, skip)
 
         images.append(environment.render())
     _ = imageio.mimsave(path, images, duration=25)

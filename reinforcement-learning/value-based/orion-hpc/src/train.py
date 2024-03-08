@@ -35,9 +35,11 @@ environment.metadata["render_fps"] = 30
 # Parameters
 # --------------------------------------------------------------------------------------------------
 # Description of the parameters:
-#   SHAPE : input shape of the network (batch, channels, height, width)
+#   SKIP : number of frames to skip between each saved frame
+#   SHAPE : how to reshape the `original` image
 #   DISCOUNT : discount rate for rewards
 #   GAMMA : discount rate for Q-learning
+#   GRADIENTS : clamp the gradients between these values (or None for no clamping)
 #   PUNISHMENT : punishment for losing
 #   INCENTIVE : incentive for rewards
 #   EXPLORATION_RATE : initial exploration rate
@@ -50,37 +52,44 @@ environment.metadata["render_fps"] = 30
 #   MEMORY : size of the agents internal memory
 #   RESET_Q_EVERY : update target-network every n games
 
-GAMES = 100000 
-CHECKPOINT = 5000
+GAMES = 10000
+SKIP = 4
+CHECKPOINT = 1000
 
-SHAPE = (1, 1, 210, 160)
-RESHAPE = (1, 4, 88, 21)
+SHAPE = {
+    "original": (1, 1, 210, 160),
+
+    "height": slice(27, 203),
+    "width": slice(22, 64),
+    "max_pooling": 2,
+}
 
 DISCOUNT = 0.95
 GAMMA = 0.99
+GRADIENTS = (-1, 1)
 
-PUNISHMENT = -10
-INCENTIVE = 10
+PUNISHMENT = -1
+INCENTIVE = 1
 
 MINIBATCH = 16
-TRAIN_EVERY = 25
-START_TRAINING_AT = 2000
+TRAIN_EVERY = 10
+START_TRAINING_AT = 1000
 
 EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.001
-EXPLORATION_STEPS = 30000 // TRAIN_EVERY
+EXPLORATION_STEPS = 20000 // TRAIN_EVERY
 
 REMEMBER = 0.005
 MEMORY = 100
-RESET_Q_EVERY = TRAIN_EVERY * 150
+RESET_Q_EVERY = TRAIN_EVERY * 100
 
 NETWORK = {
     "input_channels": 4, "outputs": 5,
     "channels": [64, 32],
-    "kernels": [2, 3],
-    # "strides": [1, 2],
-    "padding": ["valid", "same"],
-    "nodes": [32],
+    "kernels": [3, 5],
+    "padding": ["same", "same"],
+    "strides": [],
+    "nodes": [],
 }
 OPTIMIZER = {
     "optimizer": torch.optim.Adam,
@@ -97,20 +106,18 @@ METRICS = "./output/metrics.csv"
 
 logger.info("Initialising agent")
 value_agent = VisionDeepQ(
-    network=NETWORK, optimizer=OPTIMIZER,
+    network=NETWORK, optimizer=OPTIMIZER, shape=SHAPE,
 
-    batch_size=MINIBATCH, shape=RESHAPE,
-
-    memory=MEMORY,
+    batch_size=MINIBATCH, memory=MEMORY,
 
     discount=DISCOUNT, gamma=GAMMA,
-
     punishment=PUNISHMENT, incentive=INCENTIVE,
 
     exploration_rate=EXPLORATION_RATE,
     exploration_steps=EXPLORATION_STEPS,
     exploration_min=EXPLORATION_MIN,
 )
+logger.info(value_agent.eval())
 
 files = glob.glob("**/*.pth", recursive=True)
 if files:
@@ -141,14 +148,14 @@ TRAINING = False
 _STEPS = _LOSS = _REWARD = 0
 for game in range(1, GAMES + 1):
 
-    initial = value_agent.preprocess(environment.reset()[0], SHAPE)
-    states = torch.cat([initial] * RESHAPE[1], dim=1)
+    initial = value_agent.preprocess(environment.reset()[0])
+    states = torch.cat([initial] * value_agent.shape["reshape"][1], dim=1)
 
     DONE = False
     STEPS = REWARDS = 0
     TRAINING = True if (not TRAINING and game >= START_TRAINING_AT) else TRAINING
     while not DONE:
-        action, new_states, rewards, DONE = value_agent.observe(environment, states, SHAPE)
+        action, new_states, rewards, DONE = value_agent.observe(environment, states, skip=SKIP)
         value_agent.remember(states, action, rewards)
 
         states = new_states
@@ -164,7 +171,7 @@ for game in range(1, GAMES + 1):
 
     LOSS = None
     if game % TRAIN_EVERY == 0 and len(value_agent.memory["memory"]) > 0 and TRAINING:
-        LOSS = value_agent.learn(network=_value_agent)
+        LOSS = value_agent.learn(network=_value_agent, clamp=GRADIENTS)
         EXPLORATION_RATE = value_agent.parameter["rate"]
         _LOSS += LOSS
     _REWARD += REWARDS

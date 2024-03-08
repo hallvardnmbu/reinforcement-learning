@@ -1,7 +1,7 @@
 Orion High-Performance Computing
 --------------------------------
 
-The subdirectory `upload/` contain the code for the Orion HPC cluster. The code in this module is 
+The subdirectory `src/` contain the code for the Orion HPC cluster. The code in this module is 
 similar to the `../value-based/agent_image.py` code and example, but with included logging and 
 model checkpoints.
 
@@ -14,7 +14,7 @@ experimented with through the notebook `example.ipynb`.
 Usage
 -----
 
-In order to train your own agent using Orion, upload the directory `upload/` to the platform, 
+In order to train your own agent using Orion, upload the directory `src/` to the platform, 
 and create the `singularity/singularity.sif` file as mentioned below.
 
 Execution

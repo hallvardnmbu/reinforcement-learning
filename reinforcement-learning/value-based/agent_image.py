@@ -19,8 +19,6 @@ class VisionDeepQ(torch.nn.Module):
     def __init__(self,
                  network,
                  optimizer,
-                 batch_size=32,
-                 shape=(1, 4, 210, 160),
                  **other):
         """
         Value-based vision agent for reinforcement learning.
@@ -49,13 +47,13 @@ class VisionDeepQ(torch.nn.Module):
                 Learning rate for the optimizer.
             **hyperparameters : dict, optional
                 Additional hyperparameters for the optimizer.
-        batch_size : int, optional
-            Number of samples to train on.
-        shape : tuple of int, optional
-            Shape of the input state space.
         other
             Additional parameters.
 
+            batch_size : int, optional
+                Number of samples to train on.
+            memory : int, optional
+                Number of recent games to keep in memory.
             exploration_rate : float, optional
                 Initial exploration rate.
             exploration_min : float, optional
@@ -68,14 +66,23 @@ class VisionDeepQ(torch.nn.Module):
             incentive : float, optional
                 Incentive scaling for rewards.
                 Boosts the rewards gained by a factor.
-            memory : int, optional
-                Number of recent games to keep in memory.
             discount : float, optional
                 Discount factor for future rewards.
                 --> 0: only consider immediate rewards
                 --> 1: consider all future rewards equally
             gamma : float, optional
                 Discount factor for Q-learning.
+            shape : dict, optional
+                The dictionary may contain the following keys:
+
+                original : tuple of int, optional
+                    Original shape of the input tensor.
+                height : slice, optional
+                    Height of the game-area.
+                width : slice, optional
+                    Width of the game-area.
+                max_pooling : int, optional
+                    Size of the max-pooling kernel.
         """
         super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -114,8 +121,24 @@ class VisionDeepQ(torch.nn.Module):
         # Calculating the output shape of convolutional layers:
         # ------------------------------------------------------------------------------------------
 
+        self.shape = other.get("shape", {
+            "original": (1, 1, 210, 160),
+            "height": slice(0, 210),
+            "width": slice(0, 160),
+            "max_pooling": 1,
+        })
+        self.shape.setdefault("height", slice(0, self.shape["original"][-2]))
+        self.shape.setdefault("width", slice(0, self.shape["original"][-1]))
+        self.shape.setdefault("max_pooling", 1)
+        self.shape["reshape"] = (
+            1,
+            network["input_channels"],
+            (self.shape["height"].stop - self.shape["height"].start) // self.shape["max_pooling"],
+            (self.shape["width"].stop - self.shape["width"].start) // self.shape["max_pooling"]
+        )
+
         with torch.no_grad():
-            _output = torch.zeros([1, network["input_channels"], shape[-2], shape[-1]])
+            _output = torch.zeros(self.shape["reshape"])
             for layer in self._modules.values():
                 _output = layer(_output)
             _output = _output.view(_output.size(0), -1).flatten().shape[0]
@@ -123,7 +146,7 @@ class VisionDeepQ(torch.nn.Module):
         # Fully connected layers:
         # ------------------------------------------------------------------------------------------
 
-        if "nodes" not in network:
+        if "nodes" not in network or not network["nodes"]:
             setattr(self, f"layer_{len(network['channels'])}",
                     torch.nn.Linear(_output, network["outputs"], dtype=torch.float32))
         else:
@@ -144,10 +167,8 @@ class VisionDeepQ(torch.nn.Module):
         # control through deep reinforcement learning" (2015).
 
         self.parameter = {
-            "shape": shape,
-
-            "rate": other.get("exploration_rate", 0.9),
-            "min": other.get("exploration_min", 0.01),
+            "rate": other.get("exploration_rate", 1.0),
+            "min": other.get("exploration_min", 0.001),
             "decay":
                 (other.get("exploration_rate", 0.9) - other.get("exploration_min", 0.01))
                 / other.get("exploration_steps", 1500),
@@ -165,8 +186,8 @@ class VisionDeepQ(torch.nn.Module):
         }
 
         self.memory = {
-            "batch_size": batch_size,
-            "memory": deque(maxlen=other.get("memory", 2500)),
+            "batch_size": other.get("batch_size", 16),
+            "memory": deque(maxlen=other.get("memory", 250)),
             "game": deque([])
         }
 
@@ -219,31 +240,31 @@ class VisionDeepQ(torch.nn.Module):
 
         return action
 
-    @staticmethod
-    def preprocess(state, shape):
+    def preprocess(self, state):
         """
         Preprocess the observed state by normalizing and cropping it. The cropping is done as
-        follows: [:,:,27:203,22:64] in addition to max-pooling with a kernel of size `2`. This
-        represents ONLY the game-area for the Tetris environment.
+        follows: [:, :, height, width] in addition to max-pooling with a kernel of size
+        `max_pooling`. The slicing should represent the game-area, and is passed when
+        constructing the agent (through the `shape` parameter).
 
         Parameters
         ----------
         state : torch.Tensor
             Observed state.
-        shape : tuple of int
-            Shape of the input state space.
 
         Returns
         -------
         output : torch.Tensor
         """
-        state = (torch.tensor(state, dtype=torch.float32).view(shape) /
-                 torch.tensor(255, dtype=torch.float32))[:, :, 27:203, 22:64]
-        state = torch.nn.functional.max_pool2d(state, 2)
+        state = (torch.tensor(state,
+                              dtype=torch.float32).view(self.shape["original"]) /
+                 torch.tensor(255,
+                              dtype=torch.float32))[:, :, self.shape["height"], self.shape["width"]]
+        state = torch.nn.functional.max_pool2d(state, self.shape["max_pooling"])
 
         return state
 
-    def observe(self, environment, states, shape):
+    def observe(self, environment, states, skip=None):
         """
         Observe the environment for n frames.
 
@@ -253,8 +274,8 @@ class VisionDeepQ(torch.nn.Module):
             The environment to observe.
         states : torch.Tensor
             The states of the environment from the previous step.
-        shape : tuple of int
-            Shape of the input state space.
+        skip : int, optional
+            Number of frames to skip between each saved frame.
 
         Returns
         -------
@@ -271,19 +292,25 @@ class VisionDeepQ(torch.nn.Module):
 
         done = False
         rewards = torch.tensor([0.0])
-        states = torch.zeros(self.parameter["shape"])
+        skip = 1 if not skip else skip
+        states = torch.zeros(self.shape["reshape"])
 
-        for i in range(0, self.parameter["shape"][1]):
+        for i in range(0, self.shape["reshape"][1]):
+
+            for _ in range(skip-1):
+                _, reward, terminated, truncated, _ = environment.step(0)
+                done = (terminated or truncated) if not done else done
+                rewards += reward
+
             new_state, reward, terminated, truncated, _ = environment.step(action.item())
-            new_state = self.preprocess(new_state, shape)
-
-            rewards += reward
-            states[0, i] = new_state
             done = (terminated or truncated) if not done else done
+            rewards += reward
+
+            states[0, i] = self.preprocess(new_state)
 
         return action, states, rewards, done
 
-    def learn(self, network):
+    def learn(self, network, clamp=None):
         """
         Q-learning algorithm; a value-based method.
 
@@ -291,6 +318,8 @@ class VisionDeepQ(torch.nn.Module):
         ----------
         network : torch.nn.Module
             Reference network for Q-learning.
+        clamp : tuple of float, optional
+            Gradient clipping.
 
         Returns
         -------
@@ -351,17 +380,14 @@ class VisionDeepQ(torch.nn.Module):
         # `torch.cuda.amp.autocast()` is used to reduce memory usage and thus speed up training.
 
         with torch.cuda.amp.autocast():
-            actual = self(states).gather(1, actions.view(-1, 1))
+            actual = self(states).gather(1, actions)
 
             with torch.no_grad():
                 new_states = torch.roll(states, -1, 0)
                 new_states[torch.tensor(steps)] = _states
-                new_states = new_states.detach()
 
-                optimal = (
-                        rewards +
-                        self.parameter["gamma"] * network(new_states).max(1).values.view(-1, 1)
-                )
+                optimal = self.parameter["gamma"] * network(new_states).max(1)[0].unsqueeze(1)
+                optimal = rewards + optimal
 
             # As Google DeepMind suggests, the optimal Q-value is set to r if the game is over.
             for step in steps:
@@ -375,9 +401,12 @@ class VisionDeepQ(torch.nn.Module):
         self.parameter["optimizer"].zero_grad()
         loss.backward()
 
-        # Clamping gradients as per the Google DeepMind paper.
-        for param in self.parameters():
-            param.grad.data.clamp_(-1, 1)
+        # Clamping gradient (Google DeepMind uses a range of [-1, 1]).
+        if (isinstance(clamp, tuple)
+                and len(clamp) == 2
+                and all(isinstance(i, (int, float)) for i in clamp)):
+            for param in self.parameters():
+                param.grad.data.clamp_(clamp[0], clamp[1])
 
         self.parameter["optimizer"].step()
 
