@@ -1,3 +1,7 @@
+"""Visualisation utilities for the Tetris environment and agents."""
+
+import torch
+import imageio
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -9,9 +13,23 @@ def _roll(data, window=50):
             for i in range(len(data))]
 
 
-def visualise_dict(metrics: dict, title: str, window_size: int = 50) -> plt.Figure:
-    steps = _roll(metrics["steps"], window_size)
-    losses = _roll(metrics["losses"], window_size)
+def visualise(metrics, title, window=150):
+    """
+    Visualise the training metrics from a CSV file.
+
+    Parameters
+    ----------
+    metrics : dict
+    title : str
+    window : int
+        The window size for the rolling averages.
+
+    Returns
+    -------
+    plt.Figure
+    """
+    steps = _roll(metrics["steps"], window)
+    losses = _roll(metrics["losses"], window)
 
     fig, ax = plt.subplots(2, 1, figsize=(12, 8))
     fig.suptitle(title)
@@ -35,7 +53,21 @@ def visualise_dict(metrics: dict, title: str, window_size: int = 50) -> plt.Figu
     return fig
 
 
-def visualise_csv(path: str, title: str, window: int = 150) -> plt.Figure:
+def graph(path, title, window=150):
+    """
+    Visualise the training metrics from a CSV file.
+
+    Parameters
+    ----------
+    path : str
+    title : str
+    window : int
+        The window size for the rolling averages.
+
+    Returns
+    -------
+    plt.Figure
+    """
     metrics = pd.read_csv(path, header=0).set_index("game", drop=True)
 
     steps = metrics["steps"].rolling(window=window, center=True).mean()
@@ -82,3 +114,30 @@ def visualise_csv(path: str, title: str, window: int = 150) -> plt.Figure:
     losses.set_yscale("log")
 
     return fig
+
+
+def gif(environment, agent, path="./live-preview.gif", skip=4, duration=25):
+    """
+    Create a GIF of the agent playing the environment.
+
+    Parameters
+    ----------
+    environment : gym.Env
+    agent : torch.nn.Module
+    path : str, optional
+        The path to save the GIF.
+    skip : int, optional
+        The number of frames to skip between observations.
+    duration : int, optional
+        The duration of each frame in the GIF.
+    """
+    initial = agent.preprocess(environment.reset()[0])
+    states = torch.cat([initial] * agent.shape["reshape"][1], dim=1)
+
+    images = []
+    done = False
+    while not done:
+        _, new_states, _, done = agent.observe(environment, states, skip)
+
+        images.append(environment.render())
+    _ = imageio.mimsave(path, images, duration=duration)

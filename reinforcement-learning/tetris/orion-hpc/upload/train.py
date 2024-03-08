@@ -77,14 +77,11 @@ START_TRAINING_AT = 1000
 
 EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.001
-EXPLORATION_STEPS = 20000 // TRAIN_EVERY
+EXPLORATION_STEPS = 10000 // TRAIN_EVERY
 
 REMEMBER = 0.0025
 MEMORY = 500
-RESET_Q_EVERY = TRAIN_EVERY * 250
-
-# These network- and optimizer-parameters were based on the suggestion by Claude.
-# (Chat: https://claude.ai/chat/024bd66a-448c-4430-acb6-b3444d8170bf)
+RESET_Q_EVERY = TRAIN_EVERY * 50
 
 NETWORK = {
     "input_channels": 4, "outputs": 5,
@@ -96,8 +93,8 @@ NETWORK = {
 }
 OPTIMIZER = {
     "optimizer": torch.optim.RMSprop,
-    "lr": 0.00025,
-    "hyperparameters": {"alpha": 0.99, "eps": 1e-8}
+    "lr": 0.001,
+    "hyperparameters": {}
 }
 
 METRICS = "./output/metrics.csv"
@@ -144,7 +141,7 @@ with open(METRICS, "w", newline="", encoding="UTF-8") as file:
 # Training
 # --------------------------------------------------------------------------------------------------
 
-logger.info("Starting playing")
+logger.info("Started playing")
 start = time.time()
 
 TRAINING = False
@@ -167,9 +164,7 @@ for game in range(1, GAMES + 1):
 
     if random.random() < REMEMBER or REWARDS > 0:
         value_agent.memorize(states, STEPS)
-        logger.info("  %s > Rewards: %s Steps: %s Memory: %s %%",
-                    game, int(REWARDS), STEPS,
-                    int(len(value_agent.memory["memory"]) * 100 / MEMORY))
+        logger.info("  %s --> %s (steps) %s", game, int(STEPS), int(REWARDS))
     value_agent.memory["game"].clear()
 
     LOSS = None
