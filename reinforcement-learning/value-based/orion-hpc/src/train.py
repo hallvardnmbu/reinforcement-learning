@@ -52,9 +52,9 @@ environment.metadata["render_fps"] = 30
 #   MEMORY : size of the agents internal memory
 #   RESET_Q_EVERY : update target-network every n games
 
-GAMES = 10000
+GAMES = 50000
 SKIP = 4
-CHECKPOINT = 1000
+CHECKPOINT = 5000
 
 SHAPE = {
     "original": (1, 1, 210, 160),
@@ -64,37 +64,40 @@ SHAPE = {
     "max_pooling": 2,
 }
 
-DISCOUNT = 0.95
+DISCOUNT = 0.99
 GAMMA = 0.99
 GRADIENTS = (-1, 1)
 
-PUNISHMENT = -1
-INCENTIVE = 1
+PUNISHMENT = -10
+INCENTIVE = 10
 
-MINIBATCH = 16
-TRAIN_EVERY = 10
+MINIBATCH = 32
+TRAIN_EVERY = 5
 START_TRAINING_AT = 1000
 
 EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.001
 EXPLORATION_STEPS = 20000 // TRAIN_EVERY
 
-REMEMBER = 0.005
-MEMORY = 100
-RESET_Q_EVERY = TRAIN_EVERY * 100
+REMEMBER = 0.0025
+MEMORY = 500
+RESET_Q_EVERY = TRAIN_EVERY * 250
+
+# These network- and optimizer-parameters were based on the suggestion by Claude.
+# (Chat: https://claude.ai/chat/024bd66a-448c-4430-acb6-b3444d8170bf)
 
 NETWORK = {
     "input_channels": 4, "outputs": 5,
-    "channels": [64, 32],
-    "kernels": [3, 5],
-    "padding": ["same", "same"],
+    "channels": [64, 64, 32],
+    "kernels": [5, 3, 3],
+    "padding": ["same", "same", "same"],
     "strides": [],
-    "nodes": [],
+    "nodes": [64],
 }
 OPTIMIZER = {
-    "optimizer": torch.optim.Adam,
-    "lr": 0.001,
-    "hyperparameters": {}
+    "optimizer": torch.optim.RMSprop,
+    "lr": 0.00025,
+    "hyperparameters": {"alpha": 0.99, "eps": 1e-8}
 }
 
 METRICS = "./output/metrics.csv"
@@ -193,8 +196,8 @@ for game in range(1, GAMES + 1):
     if game % (CHECKPOINT // 2) == 0 or game == GAMES:
         logger.info("Game %s (progress %s %%, random %s %%)",
                     game, int(game * 100 / GAMES), round(EXPLORATION_RATE * 100, 2))
-        logger.info(" > Average steps: %s", int(_STEPS / CHECKPOINT))
-        logger.info(" > Average loss:  %s", _LOSS / (CHECKPOINT / TRAIN_EVERY))
+        logger.info(" > Average steps: %s", int(_STEPS / (CHECKPOINT // 2)))
+        logger.info(" > Average loss:  %s", _LOSS / ((CHECKPOINT // 2) / TRAIN_EVERY))
         logger.info(" > Rewards:       %s", _REWARD)
         _STEPS = _LOSS = _REWARD = 0
 

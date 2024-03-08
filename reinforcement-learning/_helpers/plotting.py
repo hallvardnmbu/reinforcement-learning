@@ -39,25 +39,46 @@ def visualise_csv(path: str, title: str, window: int = 150) -> plt.Figure:
     metrics = pd.read_csv(path, header=0).set_index("game", drop=True)
 
     steps = metrics["steps"].rolling(window=window, center=True).mean()
-    loss = metrics["loss"].dropna().rolling(window=window, min_periods=1).mean()
     rewards = metrics.loc[metrics["reward"] != 0, "reward"]
+
+    loss = metrics["loss"].dropna().rolling(window=window, min_periods=1).mean()
+    exploration = metrics["exploration"].rolling(window=window, min_periods=1).mean()
 
     fig, ax = plt.subplots(2, 1, figsize=(12, 8))
     fig.suptitle(title + f" (window size {window})")
 
-    ax[0].plot(steps, color='black', linewidth=1)
+    training = metrics[metrics['loss'] > 0].index[0]
+    ax[0].axvline(x=training, color='black', linewidth=1)
+    ax[1].axvline(x=training, color='black', linewidth=1)
+    ax[1].text(training, 0.5, 'Training starts',
+               verticalalignment='center', horizontalalignment='right',
+               transform=ax[1].get_xaxis_transform(),
+               rotation=90)
+
+    ax[0].plot(exploration, color='gray', linewidth=1)
+    ax[0].set_yticks([i / 10 for i in range(0, 11, 2)])
+    ax[0].set_ylabel("Exploration rate", color='gray')
+    ax[0].tick_params(axis='y', colors='gray')
     ax[0].set_xlim(0, metrics.shape[0])
-    ax[0].set_ylabel("Average steps per game")
+    ax[0].set_ylim(-0.1, 1.1)
+
+    step = ax[0].twinx()
+    step.plot(steps, color='black', linewidth=0.5)
+    step.set_ylabel("Steps")
+    step.set_xlim(0, metrics.shape[0])
 
     ax[1].scatter(rewards.index, rewards.values, marker='*', color='orange', s=25)
     ax[1].set_yticks(list(set(metrics["reward"].unique()) - {0.0}))
-    ax[1].set_ylabel("\u2605 Reward")
+    ax[1].set_ylabel("\u2605 Reward", color='orange')
+    ax[1].set_xlabel("Game nr.")
+    ax[1].tick_params(axis='y', colors='orange')
     ax[1].set_xlim(0, metrics.shape[0])
 
-    axs = ax[1].twinx()
-    axs.plot(loss, color='gray', linewidth=1)
-    axs.set_xlim(0, metrics.shape[0])
-    axs.set_ylabel("Loss")
-    axs.set_yscale("log")
+    losses = ax[1].twinx()
+    losses.plot(loss, color='black', linewidth=1)
+    losses.tick_params(axis='y')
+    losses.set_ylabel("Loss")
+    losses.set_xlim(0, metrics.shape[0])
+    losses.set_yscale("log")
 
     return fig
