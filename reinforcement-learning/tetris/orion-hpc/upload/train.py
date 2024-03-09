@@ -1,7 +1,7 @@
 """
 Orion HPC training script.
 
-Value-based vision agent in the tetris environment using PyTorch
+Value-based ram agent in the tetris environment using PyTorch
 """
 
 import re
@@ -15,7 +15,7 @@ import logging
 import torch
 import gymnasium as gym
 
-from agent import VisionDeepQ
+from agent import DeepQ
 
 # Logging
 # --------------------------------------------------------------------------------------------------
@@ -28,15 +28,14 @@ logger.addHandler(handler)
 # Environment
 # --------------------------------------------------------------------------------------------------
 
-environment = gym.make('ALE/Tetris-v5', render_mode="rgb_array",
-                       obs_type="grayscale", frameskip=1, repeat_action_probability=0.0)
+environment = gym.make('ALE/Tetris-ram-v5', render_mode="rgb_array",
+                       obs_type="ram", frameskip=1, repeat_action_probability=0.0)
 environment.metadata["render_fps"] = 30
 
 # Parameters
 # --------------------------------------------------------------------------------------------------
 # Description of the parameters:
 #   SKIP : number of frames to skip between each saved frame
-#   SHAPE : how to reshape the `original` image
 #   DISCOUNT : discount rate for rewards
 #   GAMMA : discount rate for Q-learning
 #   GRADIENTS : clamp the gradients between these values (or None for no clamping)
@@ -52,50 +51,31 @@ environment.metadata["render_fps"] = 30
 #   MEMORY : size of the agents internal memory
 #   RESET_Q_EVERY : update target-network every n games
 
-GAMES = 50000
+GAMES = 25000
 SKIP = 4
 CHECKPOINT = 5000
-
-SHAPE = {
-    "original": (1, 1, 210, 160),
-
-    "height": slice(27, 203),
-    "width": slice(22, 64),
-    "max_pooling": 2,
-}
 
 DISCOUNT = 0.99
 GAMMA = 0.99
 GRADIENTS = (-1, 1)
 
-PUNISHMENT = -10
-INCENTIVE = 10
+PUNISHMENT = -1
+INCENTIVE = 1
 
-MINIBATCH = 32
-TRAIN_EVERY = 5
+MINIBATCH = 64
+TRAIN_EVERY = 4
 START_TRAINING_AT = 1000
 
 EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.001
 EXPLORATION_STEPS = 10000 // TRAIN_EVERY
 
-REMEMBER = 0.0025
+REMEMBER = 0.005
 MEMORY = 500
 RESET_Q_EVERY = TRAIN_EVERY * 50
 
-NETWORK = {
-    "input_channels": 4, "outputs": 5,
-    "channels": [64, 64, 32],
-    "kernels": [5, 3, 3],
-    "padding": ["same", "same", "same"],
-    "strides": [],
-    "nodes": [64],
-}
-OPTIMIZER = {
-    "optimizer": torch.optim.RMSprop,
-    "lr": 0.001,
-    "hyperparameters": {}
-}
+NETWORK = {"inputs": 128, "outputs": 5, "nodes": [512, 256]}
+OPTIMIZER = {"optimizer": torch.optim.RMSprop, "lr": 0.0025}
 
 METRICS = "./output/metrics.csv"
 
@@ -105,8 +85,8 @@ METRICS = "./output/metrics.csv"
 # subdirectories, and loads the weights from the file with the highest checkpoint.
 
 logger.info("Initialising agent")
-value_agent = VisionDeepQ(
-    network=NETWORK, optimizer=OPTIMIZER, shape=SHAPE,
+value_agent = DeepQ(
+    network=NETWORK, optimizer=OPTIMIZER,
 
     batch_size=MINIBATCH, memory=MEMORY,
 
@@ -148,22 +128,21 @@ TRAINING = False
 _STEPS = _LOSS = _REWARD = 0
 for game in range(1, GAMES + 1):
 
-    initial = value_agent.preprocess(environment.reset()[0])
-    states = torch.cat([initial] * value_agent.shape["reshape"][1], dim=1)
+    state = value_agent.preprocess(environment.reset()[0])
 
     DONE = False
     STEPS = REWARDS = 0
     TRAINING = True if (not TRAINING and game >= START_TRAINING_AT) else TRAINING
     while not DONE:
-        action, new_states, rewards, DONE = value_agent.observe(environment, states, skip=SKIP)
-        value_agent.remember(states, action, rewards)
+        action, new_state, rewards, DONE = value_agent.observe(environment, state, skip=SKIP)
+        value_agent.remember(state, action, rewards)
 
-        states = new_states
+        state = new_state
         REWARDS += rewards.item()
         STEPS += 1
 
     if random.random() < REMEMBER or REWARDS > 0:
-        value_agent.memorize(states, STEPS)
+        value_agent.memorize(state, STEPS)
         logger.info("  %s --> %s (steps) %s", game, int(STEPS), int(REWARDS))
     value_agent.memory["game"].clear()
 

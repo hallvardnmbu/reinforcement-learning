@@ -1,7 +1,7 @@
 """
 Value-based agent for reinforcement learning.
 
-Useful for environments with `rgb` or `grayscale` state spaces (from `gymnasium`).
+Useful for environments with `ram` state spaces (from `gymnasium`).
 """
 
 from collections import deque, namedtuple
@@ -11,8 +11,8 @@ import numpy as np
 import torch
 
 
-class VisionDeepQ(torch.nn.Module):
-    """Value-based vision agent for reinforcement learning."""
+class DeepQ(torch.nn.Module):
+    """Value-based agent for reinforcement learning."""
     Memory = namedtuple("Memory",
                         ["state", "action", "reward", "new_state", "steps"])
 
@@ -21,7 +21,7 @@ class VisionDeepQ(torch.nn.Module):
                  optimizer,
                  **other):
         """
-        Value-based vision agent for reinforcement learning.
+        Value-based agent for reinforcement learning.
 
         Parameters
         ----------
@@ -33,10 +33,8 @@ class VisionDeepQ(torch.nn.Module):
                 Number of input channels.
             outputs : int
                 Number of output nodes (actions).
-            kernels : list of tuple of int
-                Kernel size for each layer.
-            channels : list, optional
-                Number of channels for each hidden layer.
+            nodes : list, optional
+                Number of nodes for each hidden layer.
         optimizer : dict
             Contains the optimizer for the model and its hyperparameters. The dictionary must
             contain the following keys:
@@ -72,94 +70,18 @@ class VisionDeepQ(torch.nn.Module):
                 --> 1: consider all future rewards equally
             gamma : float, optional
                 Discount factor for Q-learning.
-            shape : dict, optional
-                The dictionary may contain the following keys:
-
-                original : tuple of int, optional
-                    Original shape of the input tensor.
-                height : slice, optional
-                    Height of the game-area.
-                width : slice, optional
-                    Width of the game-area.
-                max_pooling : int, optional
-                    Size of the max-pooling kernel.
         """
         super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # ARCHITECTURE
         # ------------------------------------------------------------------------------------------
-        # The following makes sure the input shapes are correct, and corrects them if not.
 
-        network.setdefault("channels", [32] * len(network.get("kernels", [1])))
-        network.setdefault("kernels", [3] * len(network["channels"]))
-        network.setdefault("strides", [1] * len(network["channels"]))
-        network.setdefault("padding", ["same"] * len(network["channels"]))
+        network.setdefault("nodes", [25])
 
-        if len(network["kernels"]) != len(network['channels']):
-            network["kernels"] = [3] * len(network['channels'])
-
-        if len(network["strides"]) != len(network['channels']):
-            network["strides"] = [1] * len(network['channels'])
-
-        # Convolutional layers:
-        # ------------------------------------------------------------------------------------------
-
-        for i, (_in, _out, _kernel, _stride, _padding) in (
-                enumerate(zip(
-                    [network["input_channels"]] + network["channels"][:-1],
-                    network["channels"],
-                    network["kernels"],
-                    network["strides"],
-                    network["padding"]
-                ))
-        ):
-            setattr(self, f"layer_{i}",
-                    torch.nn.Conv2d(_in, _out,
-                                    kernel_size=_kernel, stride=_stride, padding=_padding))
-
-        # Calculating the output shape of convolutional layers:
-        # ------------------------------------------------------------------------------------------
-
-        self.shape = other.get("shape", {
-            "original": (1, 1, 210, 160),
-            "height": slice(0, 210),
-            "width": slice(0, 160),
-            "max_pooling": 1,
-        })
-        self.shape.setdefault("height", slice(0, self.shape["original"][-2]))
-        self.shape.setdefault("width", slice(0, self.shape["original"][-1]))
-        self.shape.setdefault("max_pooling", 1)
-        self.shape["reshape"] = (
-            1,
-            network["input_channels"],
-            (self.shape["height"].stop - self.shape["height"].start) // self.shape["max_pooling"],
-            (self.shape["width"].stop - self.shape["width"].start) // self.shape["max_pooling"]
-        )
-
-        with torch.no_grad():
-            _output = torch.zeros(self.shape["reshape"])
-            for layer in self._modules.values():
-                _output = layer(_output)
-            _output = _output.view(_output.size(0), -1).flatten().shape[0]
-
-        # Fully connected layers:
-        # ------------------------------------------------------------------------------------------
-
-        if "nodes" not in network or not network["nodes"]:
-            setattr(self, f"layer_{len(network['channels'])}",
-                    torch.nn.Linear(_output, network["outputs"], dtype=torch.float32))
-        else:
-            setattr(self, f"layer_{len(network['channels'])}",
-                    torch.nn.Linear(_output, network["nodes"][0], dtype=torch.float32))
-
-            for i, (_in, _out) in (
-                    enumerate(zip(
-                        network["nodes"],
-                        network["nodes"][1:] + [network["outputs"]]))
-            ):
-                setattr(self, f"layer_{len(network['channels'])+i+1}",
-                        torch.nn.Linear(_in, _out, dtype=torch.float32))
+        for i, (_in, _out) in enumerate(zip([network["inputs"]] + network["nodes"],
+                                            network["nodes"] + [network["outputs"]])):
+            setattr(self, f"layer_{i}", torch.nn.Linear(_in, _out, dtype=torch.float32))
 
         # LEARNING
         # ------------------------------------------------------------------------------------------
@@ -178,8 +100,6 @@ class VisionDeepQ(torch.nn.Module):
 
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
-
-            "convolutions": len(network["channels"]) - len(network.get("nodes", [])),
 
             "optimizer": optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
                                                 **optimizer.get("hyperparameters", {}))
@@ -208,11 +128,7 @@ class VisionDeepQ(torch.nn.Module):
         """
         _output = torch.relu(self.layer_0(state.to(self.device)))
         for i in range(1, len(self._modules) - 1):
-            if i > self.parameter["convolutions"]:
-                _output = _output.view(_output.size(0), -1)
             _output = torch.relu(getattr(self, f"layer_{i}")(_output))
-        _output = _output.view(_output.size(0), -1)
-
         output = getattr(self, f"layer_{len(self._modules)-1}")(_output)
 
         return output
@@ -243,10 +159,7 @@ class VisionDeepQ(torch.nn.Module):
 
     def preprocess(self, state):
         """
-        Preprocess the observed state by normalizing and cropping it. The cropping is done as
-        follows: [:, :, height, width] in addition to max-pooling with a kernel of size
-        `max_pooling`. The slicing should represent the game-area, and is passed when
-        constructing the agent (through the `shape` parameter).
+        Preprocess the observed state.
 
         Parameters
         ----------
@@ -257,23 +170,19 @@ class VisionDeepQ(torch.nn.Module):
         -------
         output : torch.Tensor
         """
-        state = (torch.tensor(state,
-                              dtype=torch.float32).view(self.shape["original"]) /
-                 torch.tensor(255,
-                              dtype=torch.float32))[:, :, self.shape["height"], self.shape["width"]]
-        state = torch.nn.functional.max_pool2d(state, self.shape["max_pooling"])
+        state = torch.tensor(state, dtype=torch.float32).view(1, *state.shape)
 
         return state
 
-    def observe(self, environment, states, skip=None):
+    def observe(self, environment, state, skip=4):
         """
-        Observe the environment for n frames, and skip in-between frames if specified.
+        Observe the environment for n frames.
 
         Parameters
         ----------
         environment : gymnasium.Env
             The environment to observe.
-        states : torch.Tensor
+        state : torch.Tensor
             The states of the environment from the previous step.
         skip : int, optional
             Number of frames to skip between each saved frame.
@@ -282,34 +191,32 @@ class VisionDeepQ(torch.nn.Module):
         -------
         action : torch.Tensor
             The action taken.
-        states : torch.Tensor
+        state : torch.Tensor
             The states of the environment.
         rewards : torch.Tensor
             The rewards of the environment.
         done : bool
             Whether the game is terminated.
         """
-        action = self.action(states)
+        action = self.action(state)
 
         done = False
         rewards = torch.tensor([0.0])
         skip = 1 if not skip else skip
-        states = torch.zeros(self.shape["reshape"])
 
-        for i in range(0, self.shape["reshape"][1]):
-
+        for _ in range(0, skip):
             for _ in range(skip-1):
                 _, reward, terminated, truncated, _ = environment.step(0)
                 done = (terminated or truncated) if not done else done
                 rewards += reward
 
-            new_state, reward, terminated, truncated, _ = environment.step(action.item())
+            state, reward, terminated, truncated, _ = environment.step(action.item())
             done = (terminated or truncated) if not done else done
             rewards += reward
 
-            states[0, i] = self.preprocess(new_state)
+        state = self.preprocess(state)
 
-        return action, states, rewards, done
+        return action, state, rewards, done
 
     def learn(self, network, clamp=None):
         """
