@@ -10,7 +10,7 @@
 ## Script commands
 module load singularity
 
-SIFFILE="/mnt/users/hallvlav/reinforcement-learning/singularity/singularity.sif"
+SIFFILE="/mnt/users/hallvlav/singularity/singularity.sif"
 
 ## Executing the script.
 

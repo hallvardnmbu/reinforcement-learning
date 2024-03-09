@@ -1,0 +1,29 @@
+Bootstrap: docker
+From: tensorflow/tensorflow:latest-gpu
+
+%help
+    Basic environment for running the gymnasium[atari] and pytorch libraries.
+
+%labels
+    AUTHOR_NAME Hallvard Høyland Lavik
+    AUTHOR_EMAIL hallvard.hoyland.lavik@nmbu.no
+    VERSION 1.0
+
+%post -c /bin/bash
+    apt update
+    apt --yes --allow-change-held-packages install libgl1  # Required by OpenCV
+
+    pip install --upgrade pip
+
+    pip install "gymnasium[atari]"
+    pip install "autorom[accept-rom-license]"
+
+    pip install torch
+
+    pip install numpy
+    pip install matplotlib
+    pip install imageio
+
+    echo "Environment setup complete."
+
+%runscript

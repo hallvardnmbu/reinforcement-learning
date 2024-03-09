@@ -77,11 +77,12 @@ EXPLORATION_MIN = 0.01
 EXPLORATION_STEPS = 100000 // TRAIN_EVERY
 
 REMEMBER = 0.005
+MIN_REWARD = lambda game: game/125 if game <= 100000 else 800
 MEMORY = 500
 RESET_Q_EVERY = TRAIN_EVERY * 250
 
 NETWORK = {
-    "input_channels": 4, "outputs": 5,
+    "input_channels": 4, "outputs": 4,
     "channels": [32, 64, 64],
     "kernels": [8, 4, 3],
     "padding": ["valid", "valid", "valid"],
@@ -159,7 +160,7 @@ for game in range(1, GAMES + 1):
         REWARDS += rewards.item()
         STEPS += 1
 
-    if random.random() < REMEMBER or REWARDS > 0:
+    if random.random() < REMEMBER or REWARDS > MIN_REWARD(game):
         value_agent.memorize(states, STEPS)
         logger.info("  %s --> %s (steps) %s", game, int(STEPS), int(REWARDS))
     value_agent.memory["game"].clear()
