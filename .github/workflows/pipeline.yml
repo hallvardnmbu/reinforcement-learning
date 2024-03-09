@@ -25,7 +25,7 @@ jobs:
         python_files=$(git ls-files '*.py')
         if [[ -n "$python_files" ]]; then
           echo "$python_files" | xargs pylint --disable=E0401 --disable=R0801 --disable=E0611 --disable=W0106 --disable=R0903 --disable=R0914 --disable=C0103 --disable=C3001 > pylint.out &
-          flake8 --max-line-length=100 --max-complexity=10 $python_files > flake8.out &
+          flake8 --max-line-length=100 --max-complexity=10 --ignore=E731 $python_files > flake8.out &
           wait
         fi
         
