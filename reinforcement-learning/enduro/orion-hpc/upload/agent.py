@@ -123,19 +123,8 @@ class VisionDeepQ(torch.nn.Module):
 
         self.shape = other.get("shape", {
             "original": (1, 1, 210, 160),
-            "height": slice(0, 210),
-            "width": slice(0, 160),
-            "max_pooling": 1,
+            "reshape": (1, network["input_channels"], 88, 88),
         })
-        self.shape.setdefault("height", slice(0, self.shape["original"][-2]))
-        self.shape.setdefault("width", slice(0, self.shape["original"][-1]))
-        self.shape.setdefault("max_pooling", 1)
-        self.shape["reshape"] = (
-            1,
-            network["input_channels"],
-            (self.shape["height"].stop - self.shape["height"].start) // self.shape["max_pooling"],
-            (self.shape["width"].stop - self.shape["width"].start) // self.shape["max_pooling"]
-        )
 
         with torch.no_grad():
             _output = torch.zeros(self.shape["reshape"])
@@ -243,10 +232,7 @@ class VisionDeepQ(torch.nn.Module):
 
     def preprocess(self, state):
         """
-        Preprocess the observed state by normalizing and cropping it. The cropping is done as
-        follows: [:, :, height, width] in addition to max-pooling with a kernel of size
-        `max_pooling`. The slicing should represent the game-area, and is passed when
-        constructing the agent (through the `shape` parameter).
+        Preprocess the observed state by resizing and normalizing it.
 
         Parameters
         ----------
@@ -257,11 +243,11 @@ class VisionDeepQ(torch.nn.Module):
         -------
         output : torch.Tensor
         """
-        state = (torch.tensor(state,
-                              dtype=torch.float32).view(self.shape["original"]) /
-                 torch.tensor(255,
-                              dtype=torch.float32))[:, :, self.shape["height"], self.shape["width"]]
-        state = torch.nn.functional.max_pool2d(state, self.shape["max_pooling"])
+        state = torch.tensor(state, dtype=torch.float32).view(self.shape["original"])
+        state = torch.nn.functional.interpolate(state,
+                                                size=self.shape["reshape"][2:4],
+                                                mode='bilinear', align_corners=False)
+        state = state / torch.tensor(255, dtype=torch.float32)
 
         return state
 
@@ -397,7 +383,7 @@ class VisionDeepQ(torch.nn.Module):
         # BACKPROPAGATION
         # ------------------------------------------------------------------------------------------
 
-            loss = torch.nn.functional.smooth_l1_loss(actual, optimal)
+            loss = torch.nn.functional.mse_loss(actual, optimal)
 
         self.parameter["optimizer"].zero_grad()
         loss.backward()

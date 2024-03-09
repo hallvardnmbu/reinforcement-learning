@@ -250,7 +250,7 @@ class VisionDeepQ(torch.nn.Module):
 
         Parameters
         ----------
-        state : torch.Tensor
+        state : numpy.ndarray
             Observed state.
 
         Returns
