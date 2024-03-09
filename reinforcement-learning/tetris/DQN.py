@@ -236,7 +236,8 @@ class VisionDeepQ(torch.nn.Module):
                 next(reversed(self._modules.values())).out_features
             )], dtype=torch.long, device=self.device)
         else:
-            action = self(state).argmax(1)
+            with torch.no_grad():
+                action = self(state).argmax(1)
 
         return action
 

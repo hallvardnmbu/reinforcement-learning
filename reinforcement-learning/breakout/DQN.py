@@ -267,7 +267,7 @@ class VisionDeepQ(torch.nn.Module):
 
     def observe(self, environment, states, skip=None):
         """
-        Observe the environment for n frames, and skip in-between frames if specified.
+        Observe the environment for n frames.
 
         Parameters
         ----------
@@ -397,7 +397,7 @@ class VisionDeepQ(torch.nn.Module):
         # BACKPROPAGATION
         # ------------------------------------------------------------------------------------------
 
-            loss = torch.nn.functional.mse_loss(actual, optimal)
+            loss = torch.nn.functional.smooth_l1_loss(actual, optimal)
 
         self.parameter["optimizer"].zero_grad()
         loss.backward()
