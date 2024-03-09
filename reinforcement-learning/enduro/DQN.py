@@ -123,8 +123,14 @@ class VisionDeepQ(torch.nn.Module):
 
         self.shape = other.get("shape", {
             "original": (1, 1, 210, 160),
-            "reshape": (1, network["input_channels"], 88, 88),
+            "height": slice(51, 155),
+            "width": slice(8, 160),
+            "reshape": (1, network["input_channels"], 80, 80)
         })
+        self.shape.setdefault("original", (1, 1, 210, 160))
+        self.shape.setdefault("reshape", (1, network["input_channels"], 80, 80))
+        self.shape.setdefault("height", slice(51, 155))
+        self.shape.setdefault("width", slice(8, 160))
 
         with torch.no_grad():
             _output = torch.zeros(self.shape["reshape"])
@@ -147,7 +153,7 @@ class VisionDeepQ(torch.nn.Module):
                         network["nodes"],
                         network["nodes"][1:] + [network["outputs"]]))
             ):
-                setattr(self, f"layer_{len(network['channels'])+i+1}",
+                setattr(self, f"layer_{len(network['channels']) + i + 1}",
                         torch.nn.Linear(_in, _out, dtype=torch.float32))
 
         # LEARNING
@@ -202,7 +208,7 @@ class VisionDeepQ(torch.nn.Module):
             _output = torch.relu(getattr(self, f"layer_{i}")(_output))
         _output = _output.view(_output.size(0), -1)
 
-        output = getattr(self, f"layer_{len(self._modules)-1}")(_output)
+        output = getattr(self, f"layer_{len(self._modules) - 1}")(_output)
 
         return output
 
@@ -232,7 +238,7 @@ class VisionDeepQ(torch.nn.Module):
 
     def preprocess(self, state):
         """
-        Preprocess the observed state by resizing and normalizing it.
+        Preprocess the observed state by cropping, normalizing and resizing it.
 
         Parameters
         ----------
@@ -244,10 +250,11 @@ class VisionDeepQ(torch.nn.Module):
         output : torch.Tensor
         """
         state = torch.tensor(state, dtype=torch.float32).view(self.shape["original"])
-        state = torch.nn.functional.interpolate(state,
-                                                size=self.shape["reshape"][2:4],
-                                                mode='bilinear', align_corners=False)
-        state = state / torch.tensor(255, dtype=torch.float32)
+        state = state[:, :, self.shape["height"], self.shape["width"]] / 255.0
+
+        state = torch.nn.functional.interpolate(
+            state, size=self.shape["reshape"][2:4],  mode='bilinear', align_corners=False
+        )
 
         return state
 
@@ -284,7 +291,7 @@ class VisionDeepQ(torch.nn.Module):
 
         for i in range(0, self.shape["reshape"][1]):
 
-            for _ in range(skip-1):
+            for _ in range(skip - 1):
                 _, reward, terminated, truncated, _ = environment.step(0)
                 done = (terminated or truncated) if not done else done
                 rewards += reward
@@ -380,8 +387,8 @@ class VisionDeepQ(torch.nn.Module):
             for step in steps:
                 optimal[step] = rewards[step]
 
-        # BACKPROPAGATION
-        # ------------------------------------------------------------------------------------------
+            # BACKPROPAGATION
+            # ------------------------------------------------------------------------------------------
 
             loss = torch.nn.functional.mse_loss(actual, optimal)
 

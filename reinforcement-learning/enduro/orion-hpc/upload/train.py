@@ -54,34 +54,35 @@ environment.metadata["render_fps"] = 30
 
 GAMES = 100000
 SKIP = 4
-CHECKPOINT = 10000
+CHECKPOINT = 5000
 
 SHAPE = {
     "original": (1, 1, 210, 160),
-    "reshape": (1, 4, 88, 88),
+    "height": slice(51, 155),
+    "width": slice(8, 160)
 }
 
 DISCOUNT = 0.99
 GAMMA = 0.99
 GRADIENTS = (-1, 1)
 
-PUNISHMENT = -1
-INCENTIVE = 1
+PUNISHMENT = -10
+INCENTIVE = 10
 
 MINIBATCH = 16
 TRAIN_EVERY = 4
-START_TRAINING_AT = 10000
+START_TRAINING_AT = 1000
 
 EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.01
-EXPLORATION_STEPS = 100000 // TRAIN_EVERY
+EXPLORATION_STEPS = 60000 // TRAIN_EVERY
 
 REMEMBER = 0.005
 MEMORY = 2000
 RESET_Q_EVERY = TRAIN_EVERY * 250
 
 NETWORK = {
-    "input_channels": 4, "outputs": 8,
+    "input_channels": 10, "outputs": 8,
     "channels": [32, 64, 64],
     "kernels": [8, 4, 3],
     "padding": ["valid", "valid", "valid"],
