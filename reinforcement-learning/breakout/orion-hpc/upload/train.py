@@ -61,25 +61,25 @@ SHAPE = {
     "max_pooling": 2,
 }
 
-DISCOUNT = 0.99
+DISCOUNT = 0.95
 GAMMA = 0.99
 GRADIENTS = (-1, 1)
 
-PUNISHMENT = -1
+PUNISHMENT = -10
 INCENTIVE = 1
 
 MINIBATCH = 32
 TRAIN_EVERY = 4
-START_TRAINING_AT = 10000
+START_TRAINING_AT = 250
 
 EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.01
-EXPLORATION_STEPS = 100000 // TRAIN_EVERY
+EXPLORATION_STEPS = 10000 // TRAIN_EVERY
 
 REMEMBER = 0.005
 MIN_REWARD = lambda game: game/1000 if game <= 100000 else 500
-MEMORY = 500
-RESET_Q_EVERY = TRAIN_EVERY * 250
+MEMORY = 250
+RESET_Q_EVERY = TRAIN_EVERY * 500
 
 NETWORK = {
     "input_channels": 4, "outputs": 4,
@@ -87,7 +87,7 @@ NETWORK = {
     "kernels": [8, 4, 3],
     "padding": ["valid", "valid", "valid"],
     "strides": [4, 2, 1],
-    "nodes": [512],
+    "nodes": [128],
 }
 OPTIMIZER = {
     "optimizer": torch.optim.Adam,
