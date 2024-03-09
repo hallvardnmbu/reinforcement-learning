@@ -99,7 +99,11 @@ def graph(path, title, window=150):
     step.set_ylabel("Steps")
     step.set_xlim(0, metrics.shape[0])
 
-    ax[1].scatter(rewards.index, rewards.values, marker='*', color='orange', s=25)
+    bins = pd.cut(rewards.index, bins=range(0, metrics.shape[0], window * 5), include_lowest=True)
+    grouped_rewards = rewards.groupby([bins, rewards], observed=True).count()
+    x_values = [interval.mid for interval in grouped_rewards.index.get_level_values(0)]
+    y_values = grouped_rewards.index.get_level_values(1).tolist()
+    ax[1].scatter(x_values, y_values, s=grouped_rewards.values, marker='*', color='orange')
     ax[1].set_yticks(list(set(metrics["reward"].unique()) - {0.0}))
     ax[1].set_ylabel("\u2605 Reward", color='orange')
     ax[1].set_xlabel("Game nr.")

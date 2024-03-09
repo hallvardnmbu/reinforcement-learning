@@ -161,7 +161,7 @@ for game in range(1, GAMES + 1):
 
     if random.random() < REMEMBER or REWARDS > 0:
         value_agent.memorize(states, STEPS)
-        logger.info("  %s --> %s (steps) %s", game, int(STEPS), int(REWARDS))
+        logger.info("  %s --> (%s) %s", game, int(STEPS), int(REWARDS))
     value_agent.memory["game"].clear()
 
     LOSS = None
