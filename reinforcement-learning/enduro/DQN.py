@@ -326,7 +326,7 @@ class VisionDeepQ(torch.nn.Module):
         _steps = [game.steps for game in memory]
         steps = [sum(_steps[:i + 1]) - 1 for i in range(len(_steps))]
 
-        states = torch.cat([torch.stack(game.state).squeeze() for game in memory])
+        states = torch.cat([torch.stack(game.state).squeeze(1) for game in memory])
         actions = torch.cat([torch.stack(game.action) for game in memory])
         _states = torch.cat([game.new_state for game in memory])
         rewards = torch.cat([torch.stack(game.reward).detach() for game in memory])
