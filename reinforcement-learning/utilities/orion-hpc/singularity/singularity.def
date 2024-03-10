@@ -5,8 +5,8 @@ From: tensorflow/tensorflow:latest-gpu
     Basic environment for running the gymnasium[atari] and pytorch libraries.
 
 %labels
-    AUTHOR_NAME Hallvard Høyland Lavik
-    AUTHOR_EMAIL hallvard.hoyland.lavik@nmbu.no
+    AUTHOR_NAME Your Name Here
+    AUTHOR_EMAIL your.email.here@nmbu.no
     VERSION 1.0
 
 %post -c /bin/bash
@@ -16,6 +16,7 @@ From: tensorflow/tensorflow:latest-gpu
     pip install --upgrade pip
 
     pip install "gymnasium[atari]"
+    pip install "autorom[accept-rom-license]"
 
     pip install torch
 

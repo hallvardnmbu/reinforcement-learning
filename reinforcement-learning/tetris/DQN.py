@@ -205,11 +205,6 @@ class DeepQ(torch.nn.Module):
         skip = 1 if not skip else skip
 
         for _ in range(0, skip):
-            for _ in range(skip-1):
-                _, reward, terminated, truncated, _ = environment.step(0)
-                done = (terminated or truncated) if not done else done
-                rewards += reward
-
             state, reward, terminated, truncated, _ = environment.step(action.item())
             done = (terminated or truncated) if not done else done
             rewards += reward

@@ -258,7 +258,7 @@ class VisionDeepQ(torch.nn.Module):
 
         return state
 
-    def observe(self, environment, states, skip=None):
+    def observe(self, environment, states, skip=1):
         """
         Observe the environment for n frames.
 
@@ -286,11 +286,9 @@ class VisionDeepQ(torch.nn.Module):
 
         done = False
         rewards = torch.tensor([0.0])
-        skip = 1 if not skip else skip
         states = torch.zeros(self.shape["reshape"])
 
         for i in range(0, self.shape["reshape"][1]):
-
             for _ in range(skip - 1):
                 _, reward, terminated, truncated, _ = environment.step(0)
                 done = (terminated or truncated) if not done else done

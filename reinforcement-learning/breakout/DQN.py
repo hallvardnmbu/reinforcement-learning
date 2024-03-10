@@ -250,7 +250,7 @@ class VisionDeepQ(torch.nn.Module):
 
         Parameters
         ----------
-        state : numpy.ndarray
+        state : torch.Tensor
             Observed state.
 
         Returns
@@ -265,7 +265,7 @@ class VisionDeepQ(torch.nn.Module):
 
         return state
 
-    def observe(self, environment, states, skip=None):
+    def observe(self, environment, states):
         """
         Observe the environment for n frames.
 
@@ -275,8 +275,6 @@ class VisionDeepQ(torch.nn.Module):
             The environment to observe.
         states : torch.Tensor
             The states of the environment from the previous step.
-        skip : int, optional
-            Number of frames to skip between each saved frame.
 
         Returns
         -------
@@ -293,16 +291,9 @@ class VisionDeepQ(torch.nn.Module):
 
         done = False
         rewards = torch.tensor([0.0])
-        skip = 1 if not skip else skip
         states = torch.zeros(self.shape["reshape"])
 
         for i in range(0, self.shape["reshape"][1]):
-
-            for _ in range(skip-1):
-                _, reward, terminated, truncated, _ = environment.step(0)
-                done = (terminated or truncated) if not done else done
-                rewards += reward
-
             new_state, reward, terminated, truncated, _ = environment.step(action.item())
             done = (terminated or truncated) if not done else done
             rewards += reward
@@ -397,7 +388,7 @@ class VisionDeepQ(torch.nn.Module):
         # BACKPROPAGATION
         # ------------------------------------------------------------------------------------------
 
-            loss = torch.nn.functional.smooth_l1_loss(actual, optimal)
+            loss = torch.nn.functional.mse_loss(actual, optimal)
 
         self.parameter["optimizer"].zero_grad()
         loss.backward()

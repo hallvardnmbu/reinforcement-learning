@@ -1,7 +1,7 @@
 """
 Orion HPC training script.
 
-Value-based vision agent in the enduro environment using PyTorch
+Value-based vision agent in the breakout environment using PyTorch
 """
 
 import re
@@ -15,7 +15,7 @@ import logging
 import torch
 import gymnasium as gym
 
-from agent import VisionDeepQ
+from DQN import VisionDeepQ
 
 # Logging
 # --------------------------------------------------------------------------------------------------
@@ -28,7 +28,7 @@ logger.addHandler(handler)
 # Environment
 # --------------------------------------------------------------------------------------------------
 
-environment = gym.make('ALE/Enduro-v5', render_mode="rgb_array",
+environment = gym.make('ALE/Breakout-v5', render_mode="rgb_array",
                        obs_type="grayscale", frameskip=1, repeat_action_probability=0.0)
 environment.metadata["render_fps"] = 30
 
@@ -53,46 +53,45 @@ environment.metadata["render_fps"] = 30
 #   RESET_Q_EVERY : update target-network every n games
 
 GAMES = 100000
-SKIP = 4
 CHECKPOINT = 5000
 
 SHAPE = {
     "original": (1, 1, 210, 160),
-    "height": slice(51, 155),
-    "width": slice(8, 160)
+    "max_pooling": 2,
 }
 
-DISCOUNT = 0.99
+DISCOUNT = 0.95
 GAMMA = 0.99
 GRADIENTS = (-1, 1)
 
 PUNISHMENT = -10
-INCENTIVE = 10
+INCENTIVE = 1
 
-MINIBATCH = 16
+MINIBATCH = 8
 TRAIN_EVERY = 4
-START_TRAINING_AT = 1000
+START_TRAINING_AT = 250
 
 EXPLORATION_RATE = 1.0
-EXPLORATION_MIN = 0.01
-EXPLORATION_STEPS = 60000 // TRAIN_EVERY
+EXPLORATION_MIN = 0.005
+EXPLORATION_STEPS = 20000 // TRAIN_EVERY
 
 REMEMBER = 0.005
-MEMORY = 2000
-RESET_Q_EVERY = TRAIN_EVERY * 250
+MIN_REWARD = lambda game: game/4000 if game <= 100000 else 500
+MEMORY = 100
+RESET_Q_EVERY = TRAIN_EVERY * 500
 
 NETWORK = {
-    "input_channels": 10, "outputs": 8,
+    "input_channels": 4, "outputs": 4,
     "channels": [32, 64, 64],
     "kernels": [8, 4, 3],
     "padding": ["valid", "valid", "valid"],
     "strides": [4, 2, 1],
-    "nodes": [512],
+    "nodes": [128],
 }
 OPTIMIZER = {
     "optimizer": torch.optim.Adam,
-    "lr": 0.00025,
-    "hyperparameters": {}
+    "lr": 0.0000625,
+    "hyperparameters": {"eps": 1.5e-4}
 }
 
 METRICS = "./output/metrics.csv"
@@ -102,7 +101,7 @@ METRICS = "./output/metrics.csv"
 # Searches for the pattern "weights-{CHECKPOINT}.pth" in the current directory and
 # subdirectories, and loads the weights from the file with the highest checkpoint.
 
-logger.info("Initialising agent")
+logger.debug("Initialising agent")
 value_agent = VisionDeepQ(
     network=NETWORK, optimizer=OPTIMIZER, shape=SHAPE,
 
@@ -153,16 +152,16 @@ for game in range(1, GAMES + 1):
     STEPS = REWARDS = 0
     TRAINING = True if (not TRAINING and game >= START_TRAINING_AT) else TRAINING
     while not DONE:
-        action, new_states, rewards, DONE = value_agent.observe(environment, states, skip=SKIP)
+        action, new_states, rewards, DONE = value_agent.observe(environment, states)
         value_agent.remember(states, action, rewards)
 
         states = new_states
         REWARDS += rewards.item()
         STEPS += 1
 
-    if random.random() < REMEMBER or REWARDS > 0:
+    if random.random() < REMEMBER or REWARDS > MIN_REWARD(game):
         value_agent.memorize(states, STEPS)
-        logger.info("  %s --> (%s) %s", game, int(STEPS), int(REWARDS))
+        logger.debug("  %s --> (%s) %s", game, int(STEPS), int(REWARDS))
     value_agent.memory["game"].clear()
 
     LOSS = None
@@ -199,4 +198,4 @@ for game in range(1, GAMES + 1):
         torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
 
 logger.info("Total training time: %s seconds", round(time.time() - start, 2))
-logger.info("Metrics saved to %s", METRICS)
+logger.debug("Metrics saved to %s", METRICS)

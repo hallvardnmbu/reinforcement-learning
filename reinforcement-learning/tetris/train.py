@@ -15,7 +15,7 @@ import logging
 import torch
 import gymnasium as gym
 
-from agent import DeepQ
+from DQN import DeepQ
 
 # Logging
 # --------------------------------------------------------------------------------------------------
@@ -51,31 +51,31 @@ environment.metadata["render_fps"] = 30
 #   MEMORY : size of the agents internal memory
 #   RESET_Q_EVERY : update target-network every n games
 
-GAMES = 25000
-SKIP = 4
-CHECKPOINT = 5000
+GAMES = 50000
+SKIP = 6
+CHECKPOINT = 10000
 
-DISCOUNT = 0.99
+DISCOUNT = 0.95
 GAMMA = 0.99
 GRADIENTS = (-1, 1)
 
-PUNISHMENT = -1
-INCENTIVE = 1
+PUNISHMENT = -100
+INCENTIVE = 10
 
-MINIBATCH = 64
+MINIBATCH = 128
 TRAIN_EVERY = 4
 START_TRAINING_AT = 1000
 
 EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.001
-EXPLORATION_STEPS = 10000 // TRAIN_EVERY
+EXPLORATION_STEPS = 25000 // TRAIN_EVERY
 
 REMEMBER = 0.005
-MEMORY = 500
-RESET_Q_EVERY = TRAIN_EVERY * 50
+MEMORY = 2500
+RESET_Q_EVERY = TRAIN_EVERY * 500
 
-NETWORK = {"inputs": 128, "outputs": 5, "nodes": [512, 256]}
-OPTIMIZER = {"optimizer": torch.optim.RMSprop, "lr": 0.0025}
+NETWORK = {"inputs": 128, "outputs": 5, "nodes": [512, 256, 128]}
+OPTIMIZER = {"optimizer": torch.optim.Adam, "lr": 0.0025}
 
 METRICS = "./output/metrics.csv"
 
@@ -84,7 +84,7 @@ METRICS = "./output/metrics.csv"
 # Searches for the pattern "weights-{CHECKPOINT}.pth" in the current directory and
 # subdirectories, and loads the weights from the file with the highest checkpoint.
 
-logger.info("Initialising agent")
+logger.debug("Initialising agent")
 value_agent = DeepQ(
     network=NETWORK, optimizer=OPTIMIZER,
 
@@ -143,7 +143,7 @@ for game in range(1, GAMES + 1):
 
     if random.random() < REMEMBER or REWARDS > 0:
         value_agent.memorize(state, STEPS)
-        logger.info("  %s --> (%s) %s", game, int(STEPS), int(REWARDS))
+        logger.debug("  %s --> (%s) %s", game, int(STEPS), int(REWARDS))
     value_agent.memory["game"].clear()
 
     LOSS = None
@@ -180,4 +180,4 @@ for game in range(1, GAMES + 1):
         torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
 
 logger.info("Total training time: %s seconds", round(time.time() - start, 2))
-logger.info("Metrics saved to %s", METRICS)
+logger.debug("Metrics saved to %s", METRICS)

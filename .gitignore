@@ -3,6 +3,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Unwanted files
+*.csv
+*.gif
+*.png
+
 # C extensions
 *.so
 
