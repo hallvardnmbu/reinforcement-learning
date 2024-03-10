@@ -116,7 +116,8 @@ class VisionDeepQ(torch.nn.Module):
         ):
             setattr(self, f"layer_{i}",
                     torch.nn.Conv2d(_in, _out,
-                                    kernel_size=_kernel, stride=_stride, padding=_padding))
+                                    kernel_size=_kernel, stride=_stride, padding=_padding,
+                                    bias=False))
 
         # Calculating the output shape of convolutional layers:
         # ------------------------------------------------------------------------------------------
@@ -130,11 +131,20 @@ class VisionDeepQ(torch.nn.Module):
         self.shape.setdefault("height", slice(0, self.shape["original"][-2]))
         self.shape.setdefault("width", slice(0, self.shape["original"][-1]))
         self.shape.setdefault("max_pooling", 1)
+
+        height_stop = self.shape["height"].stop
+        if height_stop <= 0:
+            height_stop = self.shape["original"][-2] + self.shape["height"].stop
+
+        width_stop = self.shape["width"].stop
+        if width_stop <= 0:
+            width_stop = self.shape["original"][-1] + self.shape["width"].stop
+
         self.shape["reshape"] = (
             1,
             network["input_channels"],
-            (self.shape["height"].stop - self.shape["height"].start) // self.shape["max_pooling"],
-            (self.shape["width"].stop - self.shape["width"].start) // self.shape["max_pooling"]
+            (height_stop - self.shape["height"].start) // self.shape["max_pooling"],
+            (width_stop - self.shape["width"].start) // self.shape["max_pooling"]
         )
 
         with torch.no_grad():
@@ -388,7 +398,7 @@ class VisionDeepQ(torch.nn.Module):
         # BACKPROPAGATION
         # ------------------------------------------------------------------------------------------
 
-            loss = torch.nn.functional.mse_loss(actual, optimal)
+            loss = torch.nn.functional.huber_loss(actual, optimal, reduction="mean")
 
         self.parameter["optimizer"].zero_grad()
         loss.backward()

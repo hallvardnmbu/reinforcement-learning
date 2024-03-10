@@ -53,7 +53,7 @@ environment.metadata["render_fps"] = 30
 #   RESET_Q_EVERY : update target-network every n games
 
 GAMES = 100000
-SKIP = 2
+SKIP = 6
 CHECKPOINT = 5000
 
 SHAPE = {
@@ -66,23 +66,23 @@ DISCOUNT = 0.95
 GAMMA = 0.99
 GRADIENTS = (-1, 1)
 
-PUNISHMENT = -100
-INCENTIVE = 10
+PUNISHMENT = 0
+INCENTIVE = 1
 
 MINIBATCH = 1
 TRAIN_EVERY = 2
 START_TRAINING_AT = 1000
 
-EXPLORATION_RATE = 0.8
+EXPLORATION_RATE = 0.9
 EXPLORATION_MIN = 0.01
 EXPLORATION_STEPS = 30000 // TRAIN_EVERY
 
 REMEMBER = 0.005
-MEMORY = 100
-RESET_Q_EVERY = TRAIN_EVERY * 500
+MEMORY = 500
+RESET_Q_EVERY = TRAIN_EVERY * 1000
 
 NETWORK = {
-    "input_channels": 4, "outputs": 8,
+    "input_channels": 1, "outputs": 8,
     "channels": [32, 64, 64],
     "kernels": [8, 4, 3],
     "padding": ["valid", "valid", "valid"],
@@ -90,9 +90,9 @@ NETWORK = {
     "nodes": [512],
 }
 OPTIMIZER = {
-    "optimizer": torch.optim.Adam,
-    "lr": 0.0000625,
-    "hyperparameters": {"eps": 1.5e-4}
+    "optimizer": torch.optim.RMSprop,
+    "lr": 0.0001,
+    "hyperparameters": {}
 }
 
 METRICS = "./output/metrics.csv"

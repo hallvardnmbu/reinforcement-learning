@@ -286,19 +286,15 @@ class VisionDeepQ(torch.nn.Module):
 
         done = False
         rewards = torch.tensor([0.0])
-        states = torch.zeros(self.shape["reshape"])
+        states = torch.zeros((1, skip, *self.shape["reshape"][2:4]))
 
-        for i in range(0, self.shape["reshape"][1]):
-            for _ in range(skip - 1):
-                _, reward, terminated, truncated, _ = environment.step(0)
-                done = (terminated or truncated) if not done else done
-                rewards += reward
-
+        for i in range(0, skip):
             new_state, reward, terminated, truncated, _ = environment.step(action.item())
             done = (terminated or truncated) if not done else done
             rewards += reward
 
             states[0, i] = self.preprocess(new_state)
+        states = torch.max(states, dim=1, keepdim=True).values
 
         return action, states, rewards, done
 

@@ -22,5 +22,4 @@ chardet
 tqdm
 
 # For transfer-learning.
-# *-----------------------------------------*
-torchvision
+# *---------------------
