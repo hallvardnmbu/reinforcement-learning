@@ -141,7 +141,6 @@ start = time.time()
 
 TRAINING = False
 _STEPS = _LOSS = _REWARD = 0
-STEP = SKIP * value_agent.shape["reshape"][1]
 for game in range(1, GAMES + 1):
 
     initial = value_agent.preprocess(environment.reset()[0])
@@ -157,7 +156,7 @@ for game in range(1, GAMES + 1):
 
         states = new_states
         REWARDS.append(rewards)
-        STEPS += STEP
+        STEPS += 1
 
     if len(REWARDS) > 0 or REMEMBER_FIRST:
         REMEMBER_FIRST = False
