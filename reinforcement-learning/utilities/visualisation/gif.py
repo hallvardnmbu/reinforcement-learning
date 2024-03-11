@@ -55,7 +55,7 @@ def gif_stacked(environment, agent, path="./live-preview.gif", skip=4, duration=
     images = []
     done = False
     while not done:
-        _, states, _, done = agent.observe(environment, states)
+        _, states, _, done = agent.observe(environment, states, skip)
 
         images.append(environment.render())
     _ = imageio.mimsave(path, images, duration=duration)

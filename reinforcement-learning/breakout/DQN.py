@@ -275,7 +275,7 @@ class VisionDeepQ(torch.nn.Module):
 
         return state
 
-    def observe(self, environment, states):
+    def observe(self, environment, states, *args):  # noqa
         """
         Observe the environment for n frames.
 
@@ -285,6 +285,8 @@ class VisionDeepQ(torch.nn.Module):
             The environment to observe.
         states : torch.Tensor
             The states of the environment from the previous step.
+        args
+            To be compatible with the other DQN agents. Added here instead of using ABC.
 
         Returns
         -------

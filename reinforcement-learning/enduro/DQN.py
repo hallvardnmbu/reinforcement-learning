@@ -277,7 +277,7 @@ class VisionDeepQ(torch.nn.Module):
             The action taken.
         states : torch.Tensor
             The states of the environment.
-        rewards : torch.Tensor
+        rewards : float
             The rewards of the environment.
         done : bool
             Whether the game is terminated.
@@ -285,16 +285,21 @@ class VisionDeepQ(torch.nn.Module):
         action = self.action(states)
 
         done = False
-        rewards = torch.tensor([0.0])
-        states = torch.zeros((1, skip, *self.shape["reshape"][2:4]))
+        rewards = 0.0
+        states = torch.zeros(self.shape["reshape"])
 
-        for i in range(0, skip):
-            new_state, reward, terminated, truncated, _ = environment.step(action.item())
-            done = (terminated or truncated) if not done else done
-            rewards += reward
+        for i in range(0, self.shape["reshape"][1]):
 
-            states[0, i] = self.preprocess(new_state)
-        states = torch.max(states, dim=1, keepdim=True).values
+            new_states = torch.zeros((1, skip, *self.shape["reshape"][2:4]))
+
+            for j in range(skip):
+                new_state, reward, terminated, truncated, _ = environment.step(action.item())
+                done = (terminated or truncated) if not done else done
+                rewards += reward
+
+                new_states[0, j] = self.preprocess(new_state)
+
+            states[0, i] = torch.max(new_states, dim=1, keepdim=True).values
 
         return action, states, rewards, done
 
