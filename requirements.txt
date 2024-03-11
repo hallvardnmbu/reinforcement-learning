@@ -8,8 +8,12 @@ torch
 numpy
 pandas
 scipy
+
+# For visualisation
+# *-----------------------------------------*
 matplotlib
 imageio
+opencv-python
 
 # Library for utilising Apple M chips
 # *-----------------------------------------*

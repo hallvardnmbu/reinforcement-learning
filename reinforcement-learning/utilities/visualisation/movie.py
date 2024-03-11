@@ -1,8 +1,10 @@
+"""Create a movie of an agent interacting with an environment."""
+
 import cv2
 import torch
 
 
-def create_movie(environment, agent, path, fps=60):
+def create_movie(environment, agent, path="./live-preview.gif", skip=4, fps=50):
     """Created by Mistral Large."""
     initial = agent.preprocess(environment.reset()[0])
     try:
@@ -10,20 +12,14 @@ def create_movie(environment, agent, path, fps=60):
     except AttributeError:
         states = initial
 
-    try:
-        done = False
+    done = False
 
-        # Get the dimensions of the first image
-        height, width, channels = environment.render().shape
+    height, width, _ = environment.render().shape
+    fourcc = cv2.VideoWriter_fourcc(*"MJPG")  # noqa
+    movie = cv2.VideoWriter(path, fourcc, fps, (width, height))
 
-        # Create the VideoWriter object
-        fourcc = cv2.VideoWriter_fourcc(*"MJPG")  # You can change the codec if needed
-        video_writer = cv2.VideoWriter(path, fourcc, fps, (width, height))
-        while not done:
-            _, states, _, done = agent.observe(environment, states)
-            video_writer.write(environment.render())
-    except Exception as e:
-        print(f"Error during image generation or writing: {e}")
-        return
+    while not done:
+        _, states, _, done = agent.observe(environment, states, skip)
+        movie.write(environment.render())
 
     cv2.destroyAllWindows()

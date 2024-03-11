@@ -275,7 +275,7 @@ class VisionDeepQ(torch.nn.Module):
 
         return state
 
-    def observe(self, environment, states, *args):  # noqa
+    def observe(self, environment, states, skip=None):
         """
         Observe the environment for n frames.
 
@@ -285,7 +285,7 @@ class VisionDeepQ(torch.nn.Module):
             The environment to observe.
         states : torch.Tensor
             The states of the environment from the previous step.
-        args
+        skip : int, optional
             To be compatible with the other DQN agents. Added here instead of using ABC.
 
         Returns
@@ -299,6 +299,8 @@ class VisionDeepQ(torch.nn.Module):
         done : bool
             Whether the game is terminated.
         """
+        print("Warning: `skip` is not used in `VisionDeepQ.observe`.") if skip is not None else None
+
         action = self.action(states)
 
         done = False
