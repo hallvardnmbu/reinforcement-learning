@@ -4,7 +4,7 @@ import torch
 import imageio
 
 
-def gif_single(environment, agent, path="./live-preview.gif", duration=25):
+def gif_single(environment, agent, path="./live-preview.gif", duration=50):
     """
     Create a GIF of the agent playing the environment.
 
@@ -31,7 +31,7 @@ def gif_single(environment, agent, path="./live-preview.gif", duration=25):
     _ = imageio.mimsave(path, images, duration=duration)
 
 
-def gif_stacked(environment, agent, path="./live-preview.gif", skip=4, duration=25):
+def gif_stacked(environment, agent, path="./live-preview.gif", skip=4, duration=50):
     """
     Create a GIF of the agent playing the environment.
 
@@ -47,12 +47,15 @@ def gif_stacked(environment, agent, path="./live-preview.gif", skip=4, duration=
         The duration of each frame in the GIF.
     """
     initial = agent.preprocess(environment.reset()[0])
-    states = torch.cat([initial] * agent.shape["reshape"][1], dim=1)
+    try:
+        states = torch.cat([initial] * agent.shape["reshape"][1], dim=1)
+    except AttributeError:
+        states = initial
 
     images = []
     done = False
     while not done:
-        _, states, _, done = agent.observe(environment, states, skip)
+        _, states, _, done = agent.observe(environment, states)
 
         images.append(environment.render())
     _ = imageio.mimsave(path, images, duration=duration)
