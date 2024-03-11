@@ -21,7 +21,7 @@ from DQN import VisionDeepQ
 
 handler = logging.FileHandler('./output/info.txt')
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 logger.addHandler(handler)
 
 # Environment
@@ -50,8 +50,8 @@ environment.metadata["render_fps"] = 30
 #   MEMORY : size of the agents internal memory
 #   RESET_Q_EVERY : update target-network every n games
 
-GAMES = 500
-SKIP = 2
+GAMES = 1000
+SKIP = 4
 CHECKPOINT = 100
 
 SHAPE = {
@@ -60,26 +60,26 @@ SHAPE = {
     "width": slice(8, 160)
 }
 
-DISCOUNT = 0.95
+DISCOUNT = 0.98
 GAMMA = 0.99
 GRADIENTS = (-10, 10)
 
-PUNISHMENT = -10
+PUNISHMENT = -1
 INCENTIVE = 1
 
-MINIBATCH = 5
+MINIBATCH = 32
 TRAIN_EVERY = 1
 
-EXPLORATION_RATE = 0.5
+EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.01
-EXPLORATION_STEPS = 200 // TRAIN_EVERY
+EXPLORATION_STEPS = 930 // TRAIN_EVERY
 
 REMEMBER_FIRST = True
-MEMORY = 5
-RESET_Q_EVERY = TRAIN_EVERY * 5
+MEMORY = 100
+RESET_Q_EVERY = TRAIN_EVERY * 1
 
 NETWORK = {
-    "input_channels": 2, "outputs": 9,
+    "input_channels": 1, "outputs": 9,
     "channels": [32, 64, 64],
     "kernels": [8, 4, 3],
     "padding": ["valid", "valid", "valid"],
@@ -199,3 +199,6 @@ for game in range(1, GAMES + 1):
 
 logger.info("Total training time: %s seconds", round(time.time() - start, 2))
 logger.debug("Metrics saved to %s", METRICS)
+
+torch.save(value_agent, "./output/model.pth")
+logger.info("Model saved.")

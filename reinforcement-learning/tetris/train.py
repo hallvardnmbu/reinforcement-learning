@@ -181,3 +181,6 @@ for game in range(1, GAMES + 1):
 
 logger.info("Total training time: %s seconds", round(time.time() - start, 2))
 logger.debug("Metrics saved to %s", METRICS)
+
+torch.save(value_agent, "./output/model.pth")
+logger.info("Model saved.")

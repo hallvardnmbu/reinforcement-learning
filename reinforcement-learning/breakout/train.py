@@ -22,7 +22,7 @@ from DQN import VisionDeepQ
 
 handler = logging.FileHandler('./output/info.txt')
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 logger.addHandler(handler)
 
 # Environment
@@ -52,36 +52,36 @@ environment.metadata["render_fps"] = 30
 #   MEMORY : size of the agents internal memory
 #   RESET_Q_EVERY : update target-network every n games
 
-GAMES = 100000
+GAMES = 10000
 SKIP = 4
-CHECKPOINT = 5000
+CHECKPOINT = 2500
 
 SHAPE = {
     "original": (1, 1, 210, 160),
-    "width": slice(7, -7),
     "height": slice(31, -17),
+    "width": slice(7, -7),
     "max_pooling": 2,
 }
 
-DISCOUNT = 0.92
+DISCOUNT = 0.98
 GAMMA = 0.99
 GRADIENTS = (-1, 1)
 
-PUNISHMENT = -1
+PUNISHMENT = -5
 INCENTIVE = 1
 
-MINIBATCH = 16
-TRAIN_EVERY = 4
+MINIBATCH = 8
+TRAIN_EVERY = 5
 START_TRAINING_AT = 200
 
-EXPLORATION_RATE = 1.0
-EXPLORATION_MIN = 0.002
-EXPLORATION_STEPS = 15000 // TRAIN_EVERY
+EXPLORATION_RATE = 0.3
+EXPLORATION_MIN = 0.005
+EXPLORATION_STEPS = 7000 // TRAIN_EVERY
 
 REMEMBER = 0.0
-MIN_REWARD = lambda game: 2**(game/1100) if game <= 10000 else 500
+MIN_REWARD = lambda game: 1.7**(game/1000) if game <= 4000 else 10
 MEMORY = 10000
-RESET_Q_EVERY = TRAIN_EVERY * 300
+RESET_Q_EVERY = TRAIN_EVERY * 50
 
 # Architecture from
 # https://github.com/GiannisMitr/DQN-Atari-Breakout/
@@ -205,3 +205,6 @@ for game in range(1, GAMES + 1):
 
 logger.info("Total training time: %s seconds", round(time.time() - start, 2))
 logger.debug("Metrics saved to %s", METRICS)
+
+torch.save(value_agent, "./output/model.pth")
+logger.info("Model saved.")
