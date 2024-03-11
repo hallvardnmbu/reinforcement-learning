@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter1d
 
 
-def visualise_dictionary(metrics, title, window=50):
+def plot(metrics, title, window=50):
     """
     Visualise the training metrics from a CSV file.
 
@@ -45,7 +45,7 @@ def visualise_dictionary(metrics, title, window=50):
     return fig
 
 
-def visualise_csv(path, title, window=50):
+def graph2(path, title, window=50):
     """
     Visualise the training metrics from a CSV file.
 
@@ -109,7 +109,7 @@ def visualise_csv(path, title, window=50):
     return fig
 
 
-def visualise_csv_grouped_rewards(path, title, window=50):
+def graph(path, title, window=50):
     """
     Visualise the training metrics from a CSV file.
 
