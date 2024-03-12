@@ -53,8 +53,7 @@ environment.metadata["render_fps"] = 30
 #   RESET_Q_EVERY : update target-network every n games
 
 GAMES = 10000
-SKIP = 4
-CHECKPOINT = 2500
+CHECKPOINT = 1000
 
 SHAPE = {
     "original": (1, 1, 210, 160),
@@ -63,36 +62,36 @@ SHAPE = {
     "max_pooling": 2,
 }
 
-DISCOUNT = 0.98
+DISCOUNT = 0.95
 GAMMA = 0.99
 GRADIENTS = (-1, 1)
 
-PUNISHMENT = -5
+PUNISHMENT = -1
 INCENTIVE = 1
 
-MINIBATCH = 8
+MINIBATCH = 32
 TRAIN_EVERY = 5
-START_TRAINING_AT = 200
+START_TRAINING_AT = 50
 
-EXPLORATION_RATE = 0.3
+EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.005
-EXPLORATION_STEPS = 7000 // TRAIN_EVERY
+EXPLORATION_STEPS = 8000 // TRAIN_EVERY
 
 REMEMBER = 0.0
-MIN_REWARD = lambda game: 1.7**(game/1000) if game <= 4000 else 10
-MEMORY = 10000
-RESET_Q_EVERY = TRAIN_EVERY * 50
+MIN_REWARD = lambda game: 1.7 ** (game / 1000) if game <= 4000 else 10
+MEMORY = 250
+RESET_Q_EVERY = TRAIN_EVERY * 125
 
 # Architecture from
 # https://github.com/GiannisMitr/DQN-Atari-Breakout/
 
 NETWORK = {
-    "input_channels": SKIP, "outputs": 4,
+    "input_channels": 4, "outputs": 4,
     "channels": [32, 64, 64],
     "kernels": [8, 4, 3],
     "padding": ["valid", "valid", "valid"],
     "strides": [4, 2, 1],
-    "nodes": [],
+    "nodes": [128],
 }
 OPTIMIZER = {
     "optimizer": torch.optim.Adam,
@@ -200,11 +199,8 @@ for game in range(1, GAMES + 1):
         _STEPS = _LOSS = _REWARD = 0
 
     if TRAINING and game % CHECKPOINT == 0:
-        logger.info("Saving weights")
-        torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
+        logger.info("Saving model")
+        torch.save(value_agent, f"./output/checkpoint-{game}.pth")
 
 logger.info("Total training time: %s seconds", round(time.time() - start, 2))
 logger.debug("Metrics saved to %s", METRICS)
-
-torch.save(value_agent, "./output/model.pth")
-logger.info("Model saved.")

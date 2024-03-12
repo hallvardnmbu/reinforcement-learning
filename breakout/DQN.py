@@ -299,8 +299,6 @@ class VisionDeepQ(torch.nn.Module):
         done : bool
             Whether the game is terminated.
         """
-        print("Warning: `skip` is not used in `VisionDeepQ.observe`.") if skip is not None else None
-
         action = self.action(states)
 
         done = False
@@ -308,11 +306,12 @@ class VisionDeepQ(torch.nn.Module):
         states = torch.zeros(self.shape["reshape"])
 
         for i in range(0, self.shape["reshape"][1]):
-            new_state, reward, terminated, truncated, _ = environment.step(action.item())
-            done = (terminated or truncated) if not done else done
-            rewards += reward
+            for _ in range(skip or 1):
+                new_state, reward, terminated, truncated, _ = environment.step(action.item())
+                done = (terminated or truncated) if not done else done
+                rewards += reward
 
-            states[0, i] = self.preprocess(new_state)
+            states[0, i] = self.preprocess(new_state)                                       # noqa
 
         return action, states, rewards, done
 

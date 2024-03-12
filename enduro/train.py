@@ -21,7 +21,7 @@ from DQN import VisionDeepQ
 
 handler = logging.FileHandler('./output/info.txt')
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logger.addHandler(handler)
 
 # Environment
@@ -51,7 +51,7 @@ environment.metadata["render_fps"] = 30
 #   RESET_Q_EVERY : update target-network every n games
 
 GAMES = 1000
-SKIP = 4
+SKIP = 6
 CHECKPOINT = 100
 
 SHAPE = {
@@ -60,23 +60,23 @@ SHAPE = {
     "width": slice(8, 160)
 }
 
-DISCOUNT = 0.98
+DISCOUNT = 0.95
 GAMMA = 0.99
 GRADIENTS = (-10, 10)
 
-PUNISHMENT = -1
+PUNISHMENT = 0
 INCENTIVE = 1
 
 MINIBATCH = 32
 TRAIN_EVERY = 1
 
-EXPLORATION_RATE = 1.0
+EXPLORATION_RATE = 0.9
 EXPLORATION_MIN = 0.01
-EXPLORATION_STEPS = 930 // TRAIN_EVERY
+EXPLORATION_STEPS = 100 // TRAIN_EVERY
 
 REMEMBER_FIRST = True
 MEMORY = 100
-RESET_Q_EVERY = TRAIN_EVERY * 1
+RESET_Q_EVERY = TRAIN_EVERY * 5
 
 NETWORK = {
     "input_channels": 1, "outputs": 9,
@@ -142,26 +142,24 @@ start = time.time()
 TRAINING = False
 _STEPS = _LOSS = _REWARD = 0
 for game in range(1, GAMES + 1):
-
     initial = value_agent.preprocess(environment.reset()[0])
     states = torch.cat([initial] * value_agent.shape["reshape"][1], dim=1)
 
     DONE = False
-    STEPS = 0
-    REWARDS = []
+    STEPS = REWARDS = 0
     TRAINING = True if (not TRAINING and len(value_agent.memory["memory"]) > 0) else TRAINING
     while not DONE:
         action, new_states, rewards, DONE = value_agent.observe(environment, states, SKIP)
         value_agent.remember(states, action, torch.tensor(rewards))
 
         states = new_states
-        REWARDS.append(rewards)
+        REWARDS += rewards
         STEPS += 1
 
-    if len(REWARDS) > 0 or REMEMBER_FIRST:
+    if REWARDS > 0 or REMEMBER_FIRST:
+        logger.debug("  %s --> (%s) %s", game, int(STEPS), int(REWARDS))
         REMEMBER_FIRST = False
         value_agent.memorize(states, STEPS)
-        logger.debug("  %s --> (%s) %s", game, int(STEPS), len(REWARDS))
     value_agent.memory["game"].clear()
 
     LOSS = None
@@ -169,7 +167,7 @@ for game in range(1, GAMES + 1):
         LOSS = value_agent.learn(network=_value_agent, clamp=GRADIENTS)
         EXPLORATION_RATE = value_agent.parameter["rate"]
         _LOSS += LOSS
-    _REWARD += sum(REWARDS)
+    _REWARD += REWARDS
     _STEPS += STEPS
 
     if game % RESET_Q_EVERY == 0 and TRAINING:
@@ -183,7 +181,7 @@ for game in range(1, GAMES + 1):
 
     with open(METRICS, "a", newline="", encoding="UTF-8") as file:
         metric = csv.writer(file)
-        metric.writerow([game, STEPS, LOSS, EXPLORATION_RATE, len(REWARDS)])
+        metric.writerow([game, STEPS, LOSS, EXPLORATION_RATE, int(REWARDS)])
 
     if game % (CHECKPOINT // 2) == 0 or game == GAMES:
         logger.info("Game %s (progress %s %%, random %s %%)",
@@ -194,11 +192,8 @@ for game in range(1, GAMES + 1):
         _STEPS = _LOSS = _REWARD = 0
 
     if TRAINING and game % CHECKPOINT == 0:
-        logger.info("Saving weights")
-        torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
+        logger.info("Saving model")
+        torch.save(value_agent, f"./output/checkpoint-{game}.pth")
 
 logger.info("Total training time: %s seconds", round(time.time() - start, 2))
 logger.debug("Metrics saved to %s", METRICS)
-
-torch.save(value_agent, "./output/model.pth")
-logger.info("Model saved.")

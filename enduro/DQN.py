@@ -253,7 +253,7 @@ class VisionDeepQ(torch.nn.Module):
         state = state[:, :, self.shape["height"], self.shape["width"]] / 255.0
 
         state = torch.nn.functional.interpolate(
-            state, size=self.shape["reshape"][2:4], mode='bilinear', align_corners=False
+            state, size=self.shape["reshape"][2:4], mode='area'
         )
 
         return state
