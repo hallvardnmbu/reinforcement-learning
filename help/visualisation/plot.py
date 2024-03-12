@@ -92,7 +92,8 @@ def graph2(path, title, window=50):
     step.set_xlim(0, metrics.shape[0])
 
     ax[1].scatter(rewards.index, rewards.values, marker='*', color='orange', s=25)
-    ax[1].set_yticks(list(set(metrics["reward"].unique()) - {0.0}))
+    ax[1].set_yticks(np.linspace(1, metrics["reward"].max(), 15)) \
+        if metrics["reward"].max() > 1 else None
     ax[1].set_ylabel("\u2605 Reward", color='orange')
     ax[1].set_xlabel("Game nr.")
     ax[1].tick_params(axis='y', colors='orange')
