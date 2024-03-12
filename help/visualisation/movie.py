@@ -4,7 +4,7 @@ import cv2
 import torch
 
 
-def movie(environment, agent, path="./live-preview.mp4", skip=4, fps=50):
+def movie(environment, agent, path="./live-preview.mp4", skip=1, fps=50):
     """Created by Mistral Large."""
     states = agent.preprocess(environment.reset()[0])
     if hasattr(agent, "shape") and "reshape" in agent.shape:

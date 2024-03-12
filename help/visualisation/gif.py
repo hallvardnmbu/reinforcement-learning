@@ -31,7 +31,7 @@ def gif2(environment, agent, path="./live-preview.gif", duration=50):
     _ = imageio.mimsave(path, images, duration=duration)
 
 
-def gif(environment, agent, path="./live-preview.gif", skip=4, duration=50):
+def gif(environment, agent, path="./live-preview.gif", skip=1, duration=50):
     """
     Create a GIF of the agent playing the environment.
 
