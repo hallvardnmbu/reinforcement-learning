@@ -1,16 +1,52 @@
-Modern applied deep learning with reinforcement methodology
+"Modern applied deep learning with reinforcement methodology"
 
 Special syllabus Spring 2024
 Norwegian University of Life Sciences (NMBU)
 
 ---
 
-N.b., in order for the examples to access atari games etc. from `gymnasium`, Python<=3.10 must be
-used.
+This repository contains theory, implementation and  examples for various reinforcement learning
+algorithms. Said algorithms are implemented in Python (using `PyTorch` and to some extent
+`ml-explore`), and are taught to play various games from the `gymnasium` library, ranging from
+simple to complex in the approximate order:
+
+frozen-lake
+  Tabular Q-learning
+  * input space     [16,]
+  * action space    [4,]
+
+cart-pole
+  REINFORCE and deep Q-learning
+  * input space     [4,]
+  * action space    [2,]
+
+tetris
+  Deep Q-learning
+  * input space     [128,]
+  * action space    [5,]
+
+breakout
+  Deep Q-learning
+  * input space     [210, 160, 1]
+  * action space    [4,]
+
+enduro
+  Deep Q-learning
+  * input space     [210, 160, 1]
+  * action space    [9,]
+
+The implementation, examples and results are presented in their corresponding directories. During
+training of the latter four games, Orion HPC (https://orion.nmbu.no) at the Norwegian University of
+Life Sciences (NMBU) provided computational resources.
 
 ---
 
-Reinforcement learning:
+N.b., in order for the examples to access atari games from `gymnasium`, Python<=3.10 must be used.
+
+---
+
+Relevant papers:
+
 - "Human-level control through deep reinforcement learning"
                                     doi:10.1038/nature14236
 - "Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm"
