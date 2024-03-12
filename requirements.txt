@@ -1,6 +1,6 @@
 # Might need: brew install swig libjpeg libpng
 
-gymnasium[all]
+gymnasium[atari]
 autorom[accept-rom-license]
 
 torch
