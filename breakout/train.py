@@ -200,7 +200,7 @@ for game in range(1, GAMES + 1):
 
     if TRAINING and game % CHECKPOINT == 0:
         logger.info("Saving model")
-        torch.save(value_agent, f"./output/checkpoint-{game}.pth")
+        torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
 
 logger.info("Total training time: %s seconds", round(time.time() - start, 2))
 logger.debug("Metrics saved to %s", METRICS)
