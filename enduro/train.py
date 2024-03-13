@@ -1,7 +1,7 @@
 """
 Orion HPC training script.
 
-Value-based vision agent in the enduro environment using PyTorch
+Value-based vision agent in the Enduro environment using PyTorch.
 """
 
 import re
@@ -33,22 +33,26 @@ environment.metadata["render_fps"] = 30
 
 # Parameters
 # --------------------------------------------------------------------------------------------------
-# Description of the parameters:
-#   SKIP : number of frames to skip between each saved frame
-#   SHAPE : how to reshape the `original` image
-#   DISCOUNT : discount rate for rewards
-#   GAMMA : discount rate for Q-learning
-#   GRADIENTS : clamp the gradients between these values (or None for no clamping)
-#   PUNISHMENT : punishment for losing
-#   INCENTIVE : incentive for rewards
-#   EXPLORATION_RATE : initial exploration rate
-#   EXPLORATION_MIN : minimum exploration rate
-#   EXPLORATION_STEPS : number of games to decay exploration rate from `RATE` to `MIN`
-#   MINIBATCH : size of the minibatch
-#   TRAIN_EVERY : train the network every n games
-#   REMEMBER : only remember games with rewards, and this fraction of the games without
-#   MEMORY : size of the agents internal memory
-#   RESET_Q_EVERY : update target-network every n games
+# GAMES : The total number of games to be played.
+# SKIP : The number of frames to skip between each saved frame.
+# CHECKPOINT : The interval at which checkpoints are saved during the training process.
+# SHAPE : A dictionary defining the shape of the original image and the slices for height and width.
+# DISCOUNT : The discount rate for rewards in the Q-learning algorithm.
+# GAMMA : The discount rate for future rewards in the Q-learning algorithm.
+# GRADIENTS : The range within which gradients are clamped.
+# PUNISHMENT : The punishment value for losing a game.
+# INCENTIVE : The incentive value for winning a game.
+# MINIBATCH : The size of the minibatch used in training.
+# TRAIN_EVERY : The interval at which the network is trained.
+# EXPLORATION_RATE : The initial exploration rate.
+# EXPLORATION_MIN : The minimum exploration rate.
+# EXPLORATION_STEPS : The number of games over which the exploration rate decays from RATE to MIN.
+# REMEMBER_FIRST : Whether to remember the first game (in case of no rewards, to start training).
+# MEMORY : The size of the agent's internal memory.
+# RESET_Q_EVERY : The interval at which the target network is updated.
+# NETWORK : A dictionary defining the architecture of the neural network.
+# OPTIMIZER : A dictionary defining the optimizer used in training.
+# METRICS : The file path where the metrics are saved.
 
 GAMES = 1000
 SKIP = 6

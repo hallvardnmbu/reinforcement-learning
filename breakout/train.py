@@ -1,7 +1,7 @@
 """
 Orion HPC training script.
 
-Value-based vision agent in the breakout environment using PyTorch
+Value-based vision agent in the Breakout environment using PyTorch.
 """
 
 import re
@@ -9,7 +9,6 @@ import csv
 import glob
 import copy
 import time
-import random
 import logging
 
 import torch
@@ -22,7 +21,7 @@ from DQN import VisionDeepQ
 
 handler = logging.FileHandler('./output/info.txt')
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logger.addHandler(handler)
 
 # Environment
@@ -34,68 +33,66 @@ environment.metadata["render_fps"] = 30
 
 # Parameters
 # --------------------------------------------------------------------------------------------------
-# Description of the parameters:
-#   SKIP : number of frames to skip between each saved frame
-#   SHAPE : how to reshape the `original` image
-#   DISCOUNT : discount rate for rewards
-#   GAMMA : discount rate for Q-learning
-#   GRADIENTS : clamp the gradients between these values (or None for no clamping)
-#   PUNISHMENT : punishment for losing
-#   INCENTIVE : incentive for rewards
-#   EXPLORATION_RATE : initial exploration rate
-#   EXPLORATION_MIN : minimum exploration rate
-#   EXPLORATION_STEPS : number of games to decay exploration rate from `RATE` to `MIN`
-#   MINIBATCH : size of the minibatch
-#   TRAIN_EVERY : train the network every n games
-#   START_TRAINING_AT : start training after n games
-#   REMEMBER : only remember games with rewards, and this fraction of the games without
-#   MEMORY : size of the agents internal memory
-#   RESET_Q_EVERY : update target-network every n games
+# GAMES : The total number of games to be played.
+# SKIP : The number of frames to skip between each saved frame.
+# CHECKPOINT : The interval at which checkpoints are saved during the training process.
+# SHAPE : A dictionary defining the shape of the original image and the slices for height and width.
+# DISCOUNT : The discount rate for rewards in the Q-learning algorithm.
+# GAMMA : The discount rate for future rewards in the Q-learning algorithm.
+# GRADIENTS : The range within which gradients are clamped.
+# PUNISHMENT : The punishment value for losing a game.
+# INCENTIVE : The incentive value for winning a game.
+# MINIBATCH : The size of the minibatch used in training.
+# TRAIN_EVERY : The interval at which the network is trained.
+# EXPLORATION_RATE : The initial exploration rate.
+# EXPLORATION_MIN : The minimum exploration rate.
+# EXPLORATION_STEPS : The number of games over which the exploration rate decays from RATE to MIN.
+# MIN_REWARD : A function that defines the minimum reward value based on the game number.
+# MEMORY : The size of the agent's internal memory.
+# RESET_Q_EVERY : The interval at which the target network is updated.
+# NETWORK : A dictionary defining the architecture of the neural network.
+# OPTIMIZER : A dictionary defining the optimizer used in training.
+# METRICS : The file path where the metrics are saved.
 
 GAMES = 10000
+SKIP = 6
 CHECKPOINT = 1000
 
 SHAPE = {
     "original": (1, 1, 210, 160),
     "height": slice(31, -17),
     "width": slice(7, -7),
-    "max_pooling": 2,
 }
 
 DISCOUNT = 0.95
 GAMMA = 0.99
-GRADIENTS = (-1, 1)
+GRADIENTS = (-10, 10)
 
 PUNISHMENT = -1
 INCENTIVE = 1
 
 MINIBATCH = 32
-TRAIN_EVERY = 5
-START_TRAINING_AT = 50
+TRAIN_EVERY = 1
 
 EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.005
 EXPLORATION_STEPS = 8000 // TRAIN_EVERY
 
-REMEMBER = 0.0
 MIN_REWARD = lambda game: 1.7 ** (game / 1000) if game <= 4000 else 10
 MEMORY = 250
-RESET_Q_EVERY = TRAIN_EVERY * 125
-
-# Architecture from
-# https://github.com/GiannisMitr/DQN-Atari-Breakout/
+RESET_Q_EVERY = TRAIN_EVERY * 5
 
 NETWORK = {
-    "input_channels": 4, "outputs": 4,
+    "input_channels": 1, "outputs": 4,
     "channels": [32, 64, 64],
     "kernels": [8, 4, 3],
     "padding": ["valid", "valid", "valid"],
     "strides": [4, 2, 1],
-    "nodes": [128],
+    "nodes": [512],
 }
 OPTIMIZER = {
-    "optimizer": torch.optim.Adam,
-    "lr": 1e-5,
+    "optimizer": torch.optim.RMSprop,
+    "lr": 0.0001,
     "hyperparameters": {}
 }
 
@@ -149,28 +146,27 @@ start = time.time()
 TRAINING = False
 _STEPS = _LOSS = _REWARD = 0
 for game in range(1, GAMES + 1):
-
     initial = value_agent.preprocess(environment.reset()[0])
     states = torch.cat([initial] * value_agent.shape["reshape"][1], dim=1)
 
     DONE = False
     STEPS = REWARDS = 0
-    TRAINING = True if (not TRAINING and game >= START_TRAINING_AT) else TRAINING
+    TRAINING = True if (not TRAINING and len(value_agent.memory["memory"]) > 0) else TRAINING
     while not DONE:
-        action, new_states, rewards, DONE = value_agent.observe(environment, states)
-        value_agent.remember(states, action, rewards)
+        action, new_states, rewards, DONE = value_agent.observe(environment, states, SKIP)
+        value_agent.remember(states, action, torch.tensor(rewards))
 
         states = new_states
-        REWARDS += rewards.item()
+        REWARDS += rewards
         STEPS += 1
 
-    if random.random() < REMEMBER or REWARDS > MIN_REWARD(game):
-        value_agent.memorize(states, STEPS)
+    if REWARDS > MIN_REWARD(game):
         logger.debug("  %s --> (%s) %s", game, int(STEPS), int(REWARDS))
+        value_agent.memorize(states, STEPS)
     value_agent.memory["game"].clear()
 
     LOSS = None
-    if game % TRAIN_EVERY == 0 and len(value_agent.memory["memory"]) > 0 and TRAINING:
+    if game % TRAIN_EVERY == 0 and TRAINING:
         LOSS = value_agent.learn(network=_value_agent, clamp=GRADIENTS)
         EXPLORATION_RATE = value_agent.parameter["rate"]
         _LOSS += LOSS
@@ -188,7 +184,7 @@ for game in range(1, GAMES + 1):
 
     with open(METRICS, "a", newline="", encoding="UTF-8") as file:
         metric = csv.writer(file)
-        metric.writerow([game, STEPS, LOSS, EXPLORATION_RATE, REWARDS])
+        metric.writerow([game, STEPS, LOSS, EXPLORATION_RATE, int(REWARDS)])
 
     if game % (CHECKPOINT // 2) == 0 or game == GAMES:
         logger.info("Game %s (progress %s %%, random %s %%)",

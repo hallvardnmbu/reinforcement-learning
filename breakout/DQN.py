@@ -126,26 +126,12 @@ class VisionDeepQ(torch.nn.Module):
             "original": (1, 1, 210, 160),
             "height": slice(0, 210),
             "width": slice(0, 160),
-            "max_pooling": 1,
+            "reshape": (1, network["input_channels"], 80, 80)
         })
+        self.shape.setdefault("original", (1, 1, 210, 160))
+        self.shape.setdefault("reshape", (1, network["input_channels"], 80, 80))
         self.shape.setdefault("height", slice(0, self.shape["original"][-2]))
         self.shape.setdefault("width", slice(0, self.shape["original"][-1]))
-        self.shape.setdefault("max_pooling", 1)
-
-        height_stop = self.shape["height"].stop
-        if height_stop <= 0:
-            height_stop = self.shape["original"][-2] + self.shape["height"].stop
-
-        width_stop = self.shape["width"].stop
-        if width_stop <= 0:
-            width_stop = self.shape["original"][-1] + self.shape["width"].stop
-
-        self.shape["reshape"] = (
-            1,
-            network["input_channels"],
-            (height_stop - self.shape["height"].start) // self.shape["max_pooling"],
-            (width_stop - self.shape["width"].start) // self.shape["max_pooling"]
-        )
 
         with torch.no_grad():
             _output = torch.zeros(self.shape["reshape"])
@@ -168,7 +154,7 @@ class VisionDeepQ(torch.nn.Module):
                         network["nodes"],
                         network["nodes"][1:] + [network["outputs"]]))
             ):
-                setattr(self, f"layer_{len(network['channels'])+i+1}",
+                setattr(self, f"layer_{len(network['channels']) + i + 1}",
                         torch.nn.Linear(_in, _out, dtype=torch.float32))
 
         # LEARNING
@@ -223,7 +209,7 @@ class VisionDeepQ(torch.nn.Module):
             _output = torch.relu(getattr(self, f"layer_{i}")(_output))
         _output = _output.view(_output.size(0), -1)
 
-        output = getattr(self, f"layer_{len(self._modules)-1}")(_output)
+        output = getattr(self, f"layer_{len(self._modules) - 1}")(_output)
 
         return output
 
@@ -253,29 +239,33 @@ class VisionDeepQ(torch.nn.Module):
 
     def preprocess(self, state):
         """
-        Preprocess the observed state by normalizing and cropping it. The cropping is done as
-        follows: [:, :, height, width] in addition to max-pooling with a kernel of size
-        `max_pooling`. The slicing should represent the game-area, and is passed when
-        constructing the agent (through the `shape` parameter).
+        Preprocess the observed state by cropping, normalizing and resizing it.
 
         Parameters
         ----------
-        state : torch.Tensor
+        state : numpy.ndarray
             Observed state.
 
         Returns
         -------
         output : torch.Tensor
         """
-        state = (torch.tensor(state,
-                              dtype=torch.float32).view(self.shape["original"]) /
-                 torch.tensor(255,
-                              dtype=torch.float32))[:, :, self.shape["height"], self.shape["width"]]
-        state = torch.nn.functional.max_pool2d(state, self.shape["max_pooling"])
+        # state = (torch.tensor(state,
+        #                       dtype=torch.float32).view(self.shape["original"]) /
+        #          torch.tensor(255,
+        #                       dtype=torch.float32))[:, :, self.shape["height"], self.shape["width"]]
+        # state = torch.nn.functional.max_pool2d(state, self.shape["max_pooling"])
+
+        state = torch.tensor(state, dtype=torch.float32).view(self.shape["original"])
+        state = state[:, :, self.shape["height"], self.shape["width"]] / 255.0
+
+        state = torch.nn.functional.interpolate(
+            state, size=self.shape["reshape"][2:4], mode='area'
+        )
 
         return state
 
-    def observe(self, environment, states, skip=None):
+    def observe(self, environment, states, skip=1):
         """
         Observe the environment for n frames.
 
@@ -286,7 +276,7 @@ class VisionDeepQ(torch.nn.Module):
         states : torch.Tensor
             The states of the environment from the previous step.
         skip : int, optional
-            To be compatible with the other DQN agents. Added here instead of using ABC.
+            Number of frames to skip between each saved frame.
 
         Returns
         -------
@@ -294,7 +284,7 @@ class VisionDeepQ(torch.nn.Module):
             The action taken.
         states : torch.Tensor
             The states of the environment.
-        rewards : torch.Tensor
+        rewards : float
             The rewards of the environment.
         done : bool
             Whether the game is terminated.
@@ -302,16 +292,21 @@ class VisionDeepQ(torch.nn.Module):
         action = self.action(states)
 
         done = False
-        rewards = torch.tensor([0.0])
+        rewards = 0.0
         states = torch.zeros(self.shape["reshape"])
 
         for i in range(0, self.shape["reshape"][1]):
-            for _ in range(skip or 1):
+
+            new_states = torch.zeros((1, skip, *self.shape["reshape"][2:4]))
+
+            for j in range(skip):
                 new_state, reward, terminated, truncated, _ = environment.step(action.item())
                 done = (terminated or truncated) if not done else done
                 rewards += reward
 
-            states[0, i] = self.preprocess(new_state)                                       # noqa
+                new_states[0, j] = self.preprocess(new_state)
+
+            states[0, i] = torch.max(new_states, dim=1, keepdim=True).values
 
         return action, states, rewards, done
 
@@ -343,7 +338,7 @@ class VisionDeepQ(torch.nn.Module):
         _steps = [game.steps for game in memory]
         steps = [sum(_steps[:i + 1]) - 1 for i in range(len(_steps))]
 
-        states = torch.cat([torch.stack(game.state).squeeze() for game in memory])
+        states = torch.cat([torch.stack(game.state).squeeze(1) for game in memory])
         actions = torch.cat([torch.stack(game.action) for game in memory])
         _states = torch.cat([game.new_state for game in memory])
         rewards = torch.cat([torch.stack(game.reward).detach() for game in memory])
@@ -398,8 +393,8 @@ class VisionDeepQ(torch.nn.Module):
             for step in steps:
                 optimal[step] = rewards[step]
 
-        # BACKPROPAGATION
-        # ------------------------------------------------------------------------------------------
+            # BACKPROPAGATION
+            # --------------------------------------------------------------------------------------
 
             loss = torch.nn.functional.huber_loss(actual, optimal, reduction="mean")
 
