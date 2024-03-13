@@ -332,7 +332,7 @@ class VisionDeepQ(torch.nn.Module):
         state = self.preprocess(state)
 
         height = 0
-        for i, row in enumerate(state.__reversed__()):
+        for i, row in enumerate(reversed(state)):
             if all(row == -1):
                 height = state.shape[0] - i
                 break
