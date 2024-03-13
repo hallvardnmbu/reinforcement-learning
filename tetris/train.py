@@ -1,7 +1,7 @@
 """
 Orion HPC training script.
 
-Value-based RAM agent in the Tetris environment using PyTorch.
+Value-based vision agent in the Enduro environment using PyTorch.
 """
 
 import re
@@ -15,7 +15,7 @@ import logging
 import torch
 import gymnasium as gym
 
-from DQN import DeepQ
+from DQN import VisionDeepQ
 
 # Logging
 # --------------------------------------------------------------------------------------------------
@@ -28,8 +28,8 @@ logger.addHandler(handler)
 # Environment
 # --------------------------------------------------------------------------------------------------
 
-environment = gym.make('ALE/Tetris-ram-v5', render_mode="rgb_array",
-                       obs_type="ram", frameskip=1, repeat_action_probability=0.0)
+environment = gym.make('ALE/Tetris-v5', render_mode="rgb_array",
+                       obs_type="grayscale", frameskip=1, repeat_action_probability=0.0)
 environment.metadata["render_fps"] = 30
 
 # Parameters
@@ -37,6 +37,7 @@ environment.metadata["render_fps"] = 30
 # GAMES : The total number of games to be played.
 # SKIP : The number of frames to skip between each saved frame.
 # CHECKPOINT : The interval at which checkpoints are saved during the training process.
+# SHAPE : A dictionary defining the shape of the original image and the slices for height and width.
 # DISCOUNT : The discount rate for rewards in the Q-learning algorithm.
 # GAMMA : The discount rate for future rewards in the Q-learning algorithm.
 # GRADIENTS : The range within which gradients are clamped.
@@ -55,31 +56,48 @@ environment.metadata["render_fps"] = 30
 # OPTIMIZER : A dictionary defining the optimizer used in training.
 # METRICS : The file path where the metrics are saved.
 
-GAMES = 50000
-SKIP = 6
-CHECKPOINT = 10000
+GAMES = 25000
+SKIP = 3
+CHECKPOINT = 2500
+
+SHAPE = {
+    "original": (1, 1, 210, 160),
+    "height": slice(27, 203),
+    "width": slice(22, 64)
+}
 
 DISCOUNT = 0.95
 GAMMA = 0.99
 GRADIENTS = (-1, 1)
 
-PUNISHMENT = -100
-INCENTIVE = 10
+PUNISHMENT = -5
+INCENTIVE = 1
 
-MINIBATCH = 128
-TRAIN_EVERY = 4
-START_TRAINING_AT = 1000
+MINIBATCH = 64
+TRAIN_EVERY = 1
+START_TRAINING_AT = 64
 
 EXPLORATION_RATE = 1.0
 EXPLORATION_MIN = 0.001
-EXPLORATION_STEPS = 25000 // TRAIN_EVERY
+EXPLORATION_STEPS = 20000 // TRAIN_EVERY
 
-REMEMBER = 0.005
-MEMORY = 2500
-RESET_Q_EVERY = TRAIN_EVERY * 500
+REMEMBER = 1.0
+MEMORY = 500
+RESET_Q_EVERY = TRAIN_EVERY * 250
 
-NETWORK = {"inputs": 128, "outputs": 5, "nodes": [512, 256, 128]}
-OPTIMIZER = {"optimizer": torch.optim.Adam, "lr": 0.0025}
+NETWORK = {
+    "input_channels": 4, "outputs": 5,
+    "channels": [128, 64],
+    "kernels": [2, 2],
+    "padding": ["valid", "valid"],
+    "strides": [2, 1],
+    "nodes": [128],
+}
+OPTIMIZER = {
+    "optimizer": torch.optim.RMSprop,
+    "lr": 0.0001,
+    "hyperparameters": {}
+}
 
 METRICS = "./output/metrics.csv"
 
@@ -89,8 +107,8 @@ METRICS = "./output/metrics.csv"
 # subdirectories, and loads the weights from the file with the highest checkpoint.
 
 logger.debug("Initialising agent")
-value_agent = DeepQ(
-    network=NETWORK, optimizer=OPTIMIZER,
+value_agent = VisionDeepQ(
+    network=NETWORK, optimizer=OPTIMIZER, shape=SHAPE,
 
     batch_size=MINIBATCH, memory=MEMORY,
 
@@ -131,27 +149,30 @@ start = time.time()
 TRAINING = False
 _STEPS = _LOSS = _REWARD = 0
 for game in range(1, GAMES + 1):
-
-    state = value_agent.preprocess(environment.reset()[0])
+    initial = value_agent.preprocess(environment.reset()[0])
+    states = torch.cat(
+        [initial.view(1, 1, *value_agent.shape["reshape"][2:])] * value_agent.shape["reshape"][1],
+        dim=1
+    )
 
     DONE = False
     STEPS = REWARDS = 0
     TRAINING = True if (not TRAINING and game >= START_TRAINING_AT) else TRAINING
     while not DONE:
-        action, new_state, rewards, DONE = value_agent.observe(environment, state, skip=SKIP)
-        value_agent.remember(state, action, rewards)
+        action, new_states, rewards, DONE = value_agent.observe(environment, states, SKIP)
+        value_agent.remember(states, action, torch.tensor(rewards))
 
-        state = new_state
-        REWARDS += rewards.item()
+        states = new_states
+        REWARDS += rewards
         STEPS += 1
 
     if random.random() < REMEMBER or REWARDS > 0:
-        value_agent.memorize(state, STEPS)
+        value_agent.memorize(states, STEPS)
         logger.debug("  %s --> (%s) %s", game, int(STEPS), int(REWARDS))
     value_agent.memory["game"].clear()
 
     LOSS = None
-    if game % TRAIN_EVERY == 0 and len(value_agent.memory["memory"]) > 0 and TRAINING:
+    if game % TRAIN_EVERY == 0 and TRAINING:
         LOSS = value_agent.learn(network=_value_agent, clamp=GRADIENTS)
         EXPLORATION_RATE = value_agent.parameter["rate"]
         _LOSS += LOSS
@@ -169,7 +190,7 @@ for game in range(1, GAMES + 1):
 
     with open(METRICS, "a", newline="", encoding="UTF-8") as file:
         metric = csv.writer(file)
-        metric.writerow([game, STEPS, LOSS, EXPLORATION_RATE, REWARDS])
+        metric.writerow([game, STEPS, LOSS, EXPLORATION_RATE, int(REWARDS)])
 
     if game % (CHECKPOINT // 2) == 0 or game == GAMES:
         logger.info("Game %s (progress %s %%, random %s %%)",
@@ -180,11 +201,8 @@ for game in range(1, GAMES + 1):
         _STEPS = _LOSS = _REWARD = 0
 
     if TRAINING and game % CHECKPOINT == 0:
-        logger.info("Saving weights")
+        logger.info("Saving model")
         torch.save(value_agent.state_dict(), f"./output/weights-{game}.pth")
 
 logger.info("Total training time: %s seconds", round(time.time() - start, 2))
 logger.debug("Metrics saved to %s", METRICS)
-
-torch.save(value_agent, "./output/model.pth")
-logger.info("Model saved.")
