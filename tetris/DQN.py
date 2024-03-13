@@ -176,7 +176,7 @@ class VisionDeepQ(torch.nn.Module):
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
 
-            "convolutions": len(network["channels"]) - len(network.get("nodes", [])),
+            "convolutions": len(network["channels"]) - 1,
 
             "optimizer": optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
                                                 **optimizer.get("hyperparameters", {}))

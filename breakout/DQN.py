@@ -175,7 +175,7 @@ class VisionDeepQ(torch.nn.Module):
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
 
-            "convolutions": len(network["channels"]) - len(network.get("nodes", [])),
+            "convolutions": len(network["channels"]) - 1,
 
             "optimizer": optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
                                                 **optimizer.get("hyperparameters", {}))
@@ -250,12 +250,6 @@ class VisionDeepQ(torch.nn.Module):
         -------
         output : torch.Tensor
         """
-        # state = (torch.tensor(state,
-        #                       dtype=torch.float32).view(self.shape["original"]) /
-        #          torch.tensor(255,
-        #                       dtype=torch.float32))[:, :, self.shape["height"], self.shape["width"]]
-        # state = torch.nn.functional.max_pool2d(state, self.shape["max_pooling"])
-
         state = torch.tensor(state, dtype=torch.float32).view(self.shape["original"])
         state = state[:, :, self.shape["height"], self.shape["width"]] / 255.0
 
@@ -396,7 +390,7 @@ class VisionDeepQ(torch.nn.Module):
             # BACKPROPAGATION
             # --------------------------------------------------------------------------------------
 
-            loss = torch.nn.functional.huber_loss(actual, optimal, reduction="mean")
+            loss = torch.nn.functional.mse_loss(actual, optimal)
 
         self.parameter["optimizer"].zero_grad()
         loss.backward()

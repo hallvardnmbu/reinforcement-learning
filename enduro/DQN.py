@@ -37,6 +37,8 @@ class VisionDeepQ(torch.nn.Module):
                 Kernel size for each layer.
             channels : list, optional
                 Number of channels for each hidden layer.
+            nodes : list of int, optional
+                Number of nodes in fully-connected layer(s).
         optimizer : dict
             Contains the optimizer for the model and its hyperparameters. The dictionary must
             contain the following keys:
@@ -174,7 +176,7 @@ class VisionDeepQ(torch.nn.Module):
             "discount": other.get("discount", 0.99),
             "gamma": other.get("gamma", 0.95),
 
-            "convolutions": len(network["channels"]) - len(network.get("nodes", [])),
+            "convolutions": len(network["channels"]) - 1,
 
             "optimizer": optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
                                                 **optimizer.get("hyperparameters", {}))
