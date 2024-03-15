@@ -261,7 +261,7 @@ class VisionDeepQ(torch.nn.Module):
 
         state = state.view(state.shape[1:])
         state[state != 111] = 1
-        state[state == 111] = -1
+        state[state == 111] = 0
 
         return state
 
@@ -331,15 +331,16 @@ class VisionDeepQ(torch.nn.Module):
         """
         state = self.preprocess(state)
 
-        height = 0
-        for i, row in enumerate(reversed(state)):
-            if all(row == -1):
-                height = state.shape[0] - i
+        height = 1
+        empty = state.min(1)
+        for height, row in enumerate(reversed(state), start=1):
+            if all(row == empty):
                 break
 
         if reward > 0:
-            height = 1 if height == 0 else height
-            reward *= state.shape[0] / height
+            reward *= self.parameter["incentive"] * state.shape[0] / height
+        elif height <= state.shape[0] / 3:
+            reward = self.parameter["incentive"] * state.shape[0] / height
         else:
             reward = self.parameter["punishment"] * height / state.shape[0]
 
