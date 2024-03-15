@@ -111,7 +111,7 @@ def graph(path, title, window=50):
     return fig
 
 
-def graph2(path, title, window=50):
+def graph_grouped_rewards(path, title, window=50):
     """
     Visualise the training metrics from a CSV file.
 

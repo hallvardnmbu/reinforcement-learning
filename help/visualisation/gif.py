@@ -46,7 +46,7 @@ def gif(environment, agent, path="./live-preview.gif", skip=1, duration=50):
     duration : int, optional
         The duration of each frame in the GIF.
     """
-    states = agent.preprocess(environment.reset()[0])
+    states = agent.preprocess(environment.reset()[0]).view(1, 1, *agent.shape["reshape"][2:])
     if hasattr(agent, "shape") and "reshape" in agent.shape:
         states = torch.cat([states] * agent.shape["reshape"][1], dim=1)
 
