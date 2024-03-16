@@ -127,10 +127,10 @@ class VisionDeepQ(torch.nn.Module):
             "original": (1, 1, 210, 160),
             "height": slice(27, 203),
             "width": slice(22, 64),
-            "reshape": (1, network["input_channels"], 30, 10)
+            "reshape": (1, network["input_channels"], 22, 21)
         })
         self.shape.setdefault("original", (1, 1, 210, 160))
-        self.shape.setdefault("reshape", (1, network["input_channels"], 30, 10))
+        self.shape.setdefault("reshape", (1, network["input_channels"], 22, 21))
         self.shape.setdefault("height", slice(27, 203))
         self.shape.setdefault("width", slice(22, 64))
 
@@ -266,7 +266,7 @@ class VisionDeepQ(torch.nn.Module):
         state = state[:, :, range(state.shape[2] - 1, 0, -2), :]
         state = state.flip(2)
 
-        state = state.view(state.shape[1:])
+        state = state.view(state.shape[2:])
 
         return state
 
@@ -350,19 +350,20 @@ class VisionDeepQ(torch.nn.Module):
                 height["done"] = False
                 break
 
+        height["built"] = height["built"] if height["built"] else state.shape[0]
+
         if reward > 0:
             reward *= self.parameter["incentive"] * state.shape[0] / height["built"]
+
             return state, reward
 
         if height["done"]:
-            holes = self._holes(state)
-
             if height["built"] <= state.shape[0] / 3:
                 reward = self.parameter["incentive"] * state.shape[0] / height["built"]
             else:
                 reward = self.parameter["punishment"] * height["built"] / state.shape[0]
 
-            reward /= (holes + 1)
+            reward /= (self._holes(state) + 1)
 
         return state, reward
 
@@ -381,10 +382,10 @@ class VisionDeepQ(torch.nn.Module):
         """
         holes = 0
 
-        for i in range(state.shape[1] - 1, 0, -1):
+        for i in range(state.shape[0]-1, 0, -1):
 
-            above = state[0, -i - 1, :].clone()
-            below = state[0, -i, :].clone()
+            above = state[-i-1, :].clone()
+            below = state[-i, :].clone()
 
             difference = below * 2 - above
 

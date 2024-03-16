@@ -56,7 +56,7 @@ environment.metadata["render_fps"] = 30
 # OPTIMIZER : A dictionary defining the optimizer used in training.
 # METRICS : The file path where the metrics are saved.
 
-GAMES = 25000
+GAMES = 30000
 SKIP = 3
 CHECKPOINT = 2500
 
@@ -77,13 +77,13 @@ MINIBATCH = 64
 TRAIN_EVERY = 1
 START_TRAINING_AT = 64
 
-EXPLORATION_RATE = 1.0
+EXPLORATION_RATE = 0.8
 EXPLORATION_MIN = 0.001
 EXPLORATION_STEPS = 20000 // TRAIN_EVERY
 
 REMEMBER = 1.0
 MEMORY = 500
-RESET_Q_EVERY = TRAIN_EVERY * 250
+RESET_Q_EVERY = TRAIN_EVERY * 25
 
 NETWORK = {
     "input_channels": 4, "outputs": 5,
