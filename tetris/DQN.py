@@ -251,17 +251,22 @@ class VisionDeepQ(torch.nn.Module):
         -------
         output : torch.Tensor
         """
-        state = torch.tensor(state, dtype=torch.float32)[self.shape["height"], self.shape["width"]]
-        state = state.view(-1, *state.shape)
+        state = torch.tensor(state, dtype=torch.float32).view(1, 1, *state.shape)
+        state = state[:, :, self.shape["height"], self.shape["width"]]
 
-        state = torch.nn.functional.max_pool2d(
-            state,
-            kernel_size=(6, 4), stride=(6, 4), padding=(3, 2)
-        )[:, :, 1:]
-
-        state = state.view(state.shape[1:])
         state[state != 111] = 1
         state[state == 111] = 0
+
+        state = torch.nn.functional.interpolate(
+            state,
+            size=(state.shape[2] // 4, state.shape[3] // 2),
+            mode="nearest",
+        )
+
+        state = state[:, :, range(state.shape[2] - 1, 0, -2), :]
+        state = state.flip(2)
+
+        state = state.view(state.shape[1:])
 
         return state
 
@@ -300,7 +305,7 @@ class VisionDeepQ(torch.nn.Module):
 
             for j in range(skip):
                 new_state, reward, terminated, truncated, _ = environment.step(action.item())
-                new_state, reward = self.reward(new_state, reward)
+                new_state, reward = self._reward(new_state, reward)
 
                 done = (terminated or truncated) if not done else done
                 new_states[0, j] = new_state
@@ -310,7 +315,7 @@ class VisionDeepQ(torch.nn.Module):
 
         return action, states, rewards, done
 
-    def reward(self, state, reward):
+    def _reward(self, state, reward):
         """
         Reward function for the agent tailored for Tetris. Incentivizes the agent to clear low
         lines, and punishes the agent for high build-up.
@@ -331,20 +336,79 @@ class VisionDeepQ(torch.nn.Module):
         """
         state = self.preprocess(state)
 
-        height = 1
-        empty = state.min(1)
-        for height, row in enumerate(reversed(state), start=1):
-            if all(row == empty):
+        height = {
+            "built": False,
+            "done": True,
+        }
+        empty = state.min().item()
+        for i, row in enumerate(reversed(state), start=1):
+
+            if all(row == empty) and not height["built"]:
+                height["built"] = i
+
+            if any(row != empty) and height["built"]:
+                height["done"] = False
                 break
 
         if reward > 0:
-            reward *= self.parameter["incentive"] * state.shape[0] / height
-        elif height <= state.shape[0] / 3:
-            reward = self.parameter["incentive"] * state.shape[0] / height
-        else:
-            reward = self.parameter["punishment"] * height / state.shape[0]
+            reward *= self.parameter["incentive"] * state.shape[0] / height["built"]
+            return state, reward
+
+        if height["done"]:
+            holes = self._holes(state)
+
+            if height["built"] <= state.shape[0] / 3:
+                reward = self.parameter["incentive"] * state.shape[0] / height["built"]
+            else:
+                reward = self.parameter["punishment"] * height["built"] / state.shape[0]
+
+            reward /= (holes + 1)
 
         return state, reward
+
+    @staticmethod
+    def _holes(state):
+        """
+        Count the number of rows with holes in the game area.
+
+        Parameters
+        ----------
+        state
+
+        Returns
+        -------
+        holes : int
+        """
+        holes = 0
+
+        for i in range(state.shape[1] - 1, 0, -1):
+
+            above = state[0, -i - 1, :].clone()
+            below = state[0, -i, :].clone()
+
+            difference = below * 2 - above
+
+            for j in range(len(difference)):
+                if difference[j] != -1:
+                    continue
+
+                left = j - 1
+                while left >= 0 and difference[left] not in (1, 2):
+                    left -= 1
+
+                flag = left < 0
+
+                right = j + 1
+                while right < len(difference) and difference[right] not in (1, 2) and not flag:
+                    right += 1
+
+                flag = flag or right >= len(difference)
+
+                if not flag:
+                    holes += 1
+                    break
+
+        return holes
 
     def learn(self, network, clamp=None):
         """
