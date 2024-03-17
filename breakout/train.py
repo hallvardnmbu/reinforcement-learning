@@ -54,9 +54,9 @@ environment.metadata["render_fps"] = 30
 # OPTIMIZER : A dictionary defining the optimizer used in training.
 # METRICS : The file path where the metrics are saved.
 
-GAMES = 50000
+GAMES = 10000
 SKIP = 4
-CHECKPOINT = 5000
+CHECKPOINT = 1000
 
 SHAPE = {
     "original": (1, 1, 210, 160),
@@ -64,25 +64,27 @@ SHAPE = {
     "width": slice(7, -7),
 }
 
-DISCOUNT = 0.98
+DISCOUNT = 0.95
 GAMMA = 0.99
-GRADIENTS = (-1, 1)
+GRADIENTS = (-10, 10)
 
-PUNISHMENT = -1
+PUNISHMENT = 0
 INCENTIVE = 1
 
 MINIBATCH = 32
 TRAIN_EVERY = 1
 
 EXPLORATION_RATE = 1.0
-EXPLORATION_MIN = 0.1
-EXPLORATION_STEPS = 45000 // TRAIN_EVERY
+EXPLORATION_MIN = 0.05
+EXPLORATION_STEPS = 6000 // TRAIN_EVERY
 
 MIN_REWARD = lambda game: game / 500 if game <= 5000 else 10
 MEMORY = 1500
 RESET_Q_EVERY = TRAIN_EVERY * 5
 
-# Hyperparameters based on https://github.com/AdrianHsu/breakout-Deep-Q-Network
+# Hyperparameters based on
+# https://github.com/AdrianHsu/breakout-Deep-Q-Network
+# https://github.com/fg91/Deep-Q-Learning/
 NETWORK = {
     "input_channels": 1, "outputs": 4,
     "channels": [32, 64, 64],
