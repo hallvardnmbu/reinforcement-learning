@@ -37,10 +37,10 @@ def plot(metrics, title, window=50):
     ax[1].set_yscale("log")
 
     axs = ax[1].twinx()
-    axs.plot(metrics["exploration"], color="gray", linewidth=0.5)
-    axs.tick_params(axis='y', colors='gray')
+    axs.plot(metrics["exploration"], color="orange", linewidth=0.5)
+    axs.tick_params(axis='y', colors='orange')
     axs.set_ylabel("Exploration rate")
-    axs.yaxis.label.set_color('gray')
+    axs.yaxis.label.set_color('orange')
 
     return fig
 
@@ -80,10 +80,10 @@ def graph(path, title, window=50):
                    transform=ax[1].get_xaxis_transform(),
                    rotation=90)
 
-    ax[0].plot(exploration, color='gray', linewidth=1)
+    ax[0].plot(exploration, color='orange', linewidth=1)
     ax[0].set_yticks([i / 10 for i in range(0, 11, 2)])
-    ax[0].set_ylabel("Exploration rate", color='gray')
-    ax[0].tick_params(axis='y', colors='gray')
+    ax[0].set_ylabel("Exploration rate", color='orange')
+    ax[0].tick_params(axis='y', colors='orange')
     ax[0].set_xlim(0, metrics.shape[0])
     ax[0].set_ylim(-0.1, 1.1)
 
@@ -146,10 +146,10 @@ def graph_grouped_rewards(path, title, window=50):
                    transform=ax[1].get_xaxis_transform(),
                    rotation=90)
 
-    ax[0].plot(exploration, color='gray', linewidth=1)
+    ax[0].plot(exploration, color='orange', linewidth=1)
     ax[0].set_yticks([i / 10 for i in range(0, 11, 2)])
-    ax[0].set_ylabel("Exploration rate", color='gray')
-    ax[0].tick_params(axis='y', colors='gray')
+    ax[0].set_ylabel("Exploration rate", color='orange')
+    ax[0].tick_params(axis='y', colors='orange')
     ax[0].set_xlim(0, metrics.shape[0])
     ax[0].set_ylim(-0.1, 1.1)
 
