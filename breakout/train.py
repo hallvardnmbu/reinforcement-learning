@@ -54,9 +54,9 @@ environment.metadata["render_fps"] = 30
 # OPTIMIZER : A dictionary defining the optimizer used in training.
 # METRICS : The file path where the metrics are saved.
 
-GAMES = 10000
+GAMES = 30000
 SKIP = 4
-CHECKPOINT = 1000
+CHECKPOINT = 5000
 
 SHAPE = {
     "original": (1, 1, 210, 160),
@@ -68,15 +68,15 @@ DISCOUNT = 0.95
 GAMMA = 0.99
 GRADIENTS = (-10, 10)
 
-PUNISHMENT = 0
-INCENTIVE = 1
+PUNISHMENT = -10
+INCENTIVE = 10
 
 MINIBATCH = 32
 TRAIN_EVERY = 1
 
 EXPLORATION_RATE = 1.0
-EXPLORATION_MIN = 0.05
-EXPLORATION_STEPS = 6000 // TRAIN_EVERY
+EXPLORATION_MIN = 0.1
+EXPLORATION_STEPS = 20000 // TRAIN_EVERY
 
 MIN_REWARD = lambda game: game / 500 if game <= 5000 else 10
 MEMORY = 1500
@@ -95,8 +95,7 @@ NETWORK = {
 }
 OPTIMIZER = {
     "optimizer": torch.optim.RMSprop,
-    "lr": 0.00025,
-    "hyperparameters": {"eps": 1e-6, "weight_decay": 0.99}
+    "lr": 0.000065,
 }
 
 METRICS = "./output/metrics.csv"
