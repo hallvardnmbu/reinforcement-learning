@@ -127,10 +127,10 @@ class VisionDeepQ(torch.nn.Module):
             "original": (1, 1, 210, 160),
             "height": slice(27, 203),
             "width": slice(22, 64),
-            "reshape": (1, network["input_channels"], 22, 21)
+            "reshape": (1, network["input_channels"], 22, 10)
         })
         self.shape.setdefault("original", (1, 1, 210, 160))
-        self.shape.setdefault("reshape", (1, network["input_channels"], 22, 21))
+        self.shape.setdefault("reshape", (1, network["input_channels"], 22, 10))
         self.shape.setdefault("height", slice(27, 203))
         self.shape.setdefault("width", slice(22, 64))
 
@@ -179,7 +179,9 @@ class VisionDeepQ(torch.nn.Module):
             "convolutions": len(network["channels"]) - 1,
 
             "optimizer": optimizer["optimizer"](self.parameters(), lr=optimizer["lr"],
-                                                **optimizer.get("hyperparameters", {}))
+                                                **optimizer.get("hyperparameters", {})),
+
+            "new": False
         }
 
         self.memory = {
@@ -251,22 +253,31 @@ class VisionDeepQ(torch.nn.Module):
         -------
         output : torch.Tensor
         """
-        state = torch.tensor(state, dtype=torch.float32).view(1, 1, *state.shape)
-        state = state[:, :, self.shape["height"], self.shape["width"]]
+        state = torch.tensor(state, dtype=torch.float32)
+        state = state[self.shape["height"], self.shape["width"]]
 
         state[state != 111] = 1
         state[state == 111] = 0
 
+        state = state.view(1, 1, *state.shape)
+
         state = torch.nn.functional.interpolate(
             state,
-            size=(state.shape[2] // 4, state.shape[3] // 2),
+            size=(state.shape[-2] // 4, state.shape[-1] // 2),
             mode="nearest",
         )
 
         state = state[:, :, range(state.shape[2] - 1, 0, -2), :]
+
         state = state.flip(2)
 
-        state = state.view(state.shape[2:])
+        state = state[:, :, :, 1:]
+
+        state = torch.nn.functional.interpolate(
+            state,
+            size=(22, 10),
+            mode="nearest",
+        )[0, 0]
 
         return state
 
@@ -301,17 +312,17 @@ class VisionDeepQ(torch.nn.Module):
         states = torch.zeros(self.shape["reshape"])
 
         for i in range(0, self.shape["reshape"][1]):
-            new_states = torch.zeros((1, skip, *self.shape["reshape"][2:4]))
-
-            for j in range(skip):
-                new_state, reward, terminated, truncated, _ = environment.step(action.item())
+            for _ in range(skip):
+                new_state, reward, terminated, truncated, _ = environment.step(action)
                 new_state, reward = self._reward(new_state, reward)
 
+                if new_state[0:5, 3:7].any():
+                    self.parameter["new"] = True
+
                 done = (terminated or truncated) if not done else done
-                new_states[0, j] = new_state
                 rewards += reward
 
-            states[0, i] = torch.max(new_states, dim=1, keepdim=True).values
+            states[0, i] = new_state
 
         return action, states, rewards, done
 
@@ -336,34 +347,24 @@ class VisionDeepQ(torch.nn.Module):
         """
         state = self.preprocess(state)
 
-        height = {
-            "built": False,
-            "done": True,
-        }
-        empty = state.min().item()
-        for i, row in enumerate(reversed(state), start=1):
+        try:
+            built = state.shape[0] - (state == 0.0).all(1).nonzero()[-1].item()
+        except IndexError:
+            built = state.shape[0] - 1
 
-            if all(row == empty) and not height["built"]:
-                height["built"] = i
-
-            if any(row != empty) and height["built"]:
-                height["done"] = False
-                break
-
-        height["built"] = height["built"] if height["built"] else state.shape[0]
+        holes = self._holes(state)
 
         if reward > 0:
-            reward *= self.parameter["incentive"] * state.shape[0] / height["built"]
+            reward *= self.parameter["incentive"] * state.shape[0] / built
+        elif self.parameter["new"]:
+            self.parameter["new"] = False
 
-            return state, reward
-
-        if height["done"]:
-            if height["built"] <= state.shape[0] / 3:
-                reward = self.parameter["incentive"] * state.shape[0] / height["built"]
+            if built <= state.shape[0] / 2:
+                reward = self.parameter["incentive"] * state.shape[0] / built
             else:
-                reward = self.parameter["punishment"] * height["built"] / state.shape[0]
+                reward = self.parameter["punishment"] * built / state.shape[0]
 
-            reward /= (self._holes(state) + 1)
+        reward = reward / holes if holes > 0 else reward
 
         return state, reward
 
@@ -380,36 +381,14 @@ class VisionDeepQ(torch.nn.Module):
         -------
         holes : int
         """
-        holes = 0
+        above = torch.roll(state, 1, 0)[1:, :].clone().detach()
+        below = state[1:, :].clone().detach()
 
-        for i in range(state.shape[0]-1, 0, -1):
+        difference = below * 2 - above
 
-            above = state[-i-1, :].clone()
-            below = state[-i, :].clone()
+        holes = sum(difference.flatten() == -1) - 2
 
-            difference = below * 2 - above
-
-            for j in range(len(difference)):
-                if difference[j] != -1:
-                    continue
-
-                left = j - 1
-                while left >= 0 and difference[left] not in (1, 2):
-                    left -= 1
-
-                flag = left < 0
-
-                right = j + 1
-                while right < len(difference) and difference[right] not in (1, 2) and not flag:
-                    right += 1
-
-                flag = flag or right >= len(difference)
-
-                if not flag:
-                    holes += 1
-                    break
-
-        return holes
+        return holes.item()
 
     def learn(self, network, clamp=None):
         """
