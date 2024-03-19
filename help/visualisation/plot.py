@@ -20,27 +20,35 @@ def plot(metrics, title, window=50):
     -------
     plt.Figure
     """
-    steps = gaussian_filter1d(metrics["steps"], sigma=window)
-    losses = gaussian_filter1d(metrics["losses"], sigma=window)
-
     fig, ax = plt.subplots(2, 1, figsize=(12, 8))
     fig.suptitle(title)
 
+    steps = gaussian_filter1d(metrics["steps"], sigma=window)
     ax[0].plot(steps, color="black", linewidth=1)
     ax[0].set_title("Average steps per game")
     ax[0].set_xticks([])
 
-    ax[1].plot(np.linspace(0, len(metrics["steps"]), len(losses)), losses,
-               color="black", linewidth=1)
-    ax[1].set_title("Average loss")
-    ax[1].set_xlabel("Game nr.")
-    ax[1].set_yscale("log")
+    try:
+        losses = gaussian_filter1d(metrics["losses"], sigma=window)
 
-    axs = ax[1].twinx()
-    axs.plot(metrics["exploration"], color="orange", linewidth=0.5)
-    axs.tick_params(axis='y', colors='orange')
-    axs.set_ylabel("Exploration rate")
-    axs.yaxis.label.set_color('orange')
+        ax[1].plot(np.linspace(0, len(metrics["steps"]), len(losses)), losses,
+                   color="black", linewidth=1)
+        ax[1].set_title("Average loss")
+        ax[1].set_xlabel("Game nr.")
+        ax[1].set_yscale("log")
+
+        axs = ax[1].twinx()
+        axs.plot(metrics["exploration"], color="orange", linewidth=0.5)
+        axs.tick_params(axis='y', colors='orange')
+        axs.set_ylabel("Exploration rate")
+        axs.yaxis.label.set_color('orange')
+    except KeyError:
+        gradients = gaussian_filter1d(metrics["gradients"], sigma=window)
+
+        ax[1].plot(np.linspace(0, len(metrics["steps"]), len(gradients)), gradients,
+                   color="black", linewidth=1)
+        ax[1].set_title("Average loss")
+        ax[1].set_xlabel("Game nr.")
 
     return fig
 
