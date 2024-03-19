@@ -316,7 +316,7 @@ class VisionDeepQ(torch.nn.Module):
                 new_state, reward, terminated, truncated, _ = environment.step(action)
                 new_state, reward = self._reward(new_state, reward)
 
-                if new_state[0:5, 3:7].any():
+                if new_state[0:5, 3:7].any() and not self.parameter["new"]:
                     self.parameter["new"] = True
 
                 done = (terminated or truncated) if not done else done
@@ -352,19 +352,17 @@ class VisionDeepQ(torch.nn.Module):
         except IndexError:
             built = state.shape[0] - 1
 
-        holes = self._holes(state)
-
         if reward > 0:
-            reward *= self.parameter["incentive"] * state.shape[0] / built
+            reward *= self.parameter["incentive"]
         elif self.parameter["new"]:
             self.parameter["new"] = False
 
-            if built <= state.shape[0] / 2:
-                reward = self.parameter["incentive"] * state.shape[0] / built
+            if built <= state.shape[0] / 2.5:
+                reward = self.parameter["incentive"]
             else:
-                reward = self.parameter["punishment"] * built / state.shape[0]
+                reward = self.parameter["punishment"]
 
-        reward = reward / holes if holes > 0 else reward
+        reward *= state.shape[0] / (built * self._holes(state))
 
         return state, reward
 
@@ -387,8 +385,9 @@ class VisionDeepQ(torch.nn.Module):
         difference = below * 2 - above
 
         holes = sum(difference.flatten() == -1) - 2
+        holes = max(holes.item(), 1)
 
-        return holes.item()
+        return holes
 
     def learn(self, network, clamp=None):
         """
