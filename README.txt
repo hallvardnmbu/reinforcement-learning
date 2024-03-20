@@ -20,20 +20,22 @@ cart-pole
   * input space     [4,]
   * action space    [2,]
 
-tetris
-  Deep Q-learning
-  * input space     [128,]
-  * action space    [5,]
-
-breakout
-  Deep Q-learning
-  * input space     [210, 160, 1]
-  * action space    [4,]
-
 enduro
   Deep Q-learning
   * input space     [210, 160, 1]
   * action space    [9,]
+
+breakout (suboptimal results)
+  Deep Q-learning
+  * input space     [210, 160, 1]
+  * action space    [4,]
+
+tetris (suboptimal results)
+  Deep Q-learning
+  * input space     [210, 160, 1]
+  * action space    [5,]
+
+The theory is presented in `report.pdf`, along with results and simplified implementation examples.
 
 The implementation, examples and results are presented in their corresponding directories. During
 training of the latter four games, Orion HPC (https://orion.nmbu.no) at the Norwegian University of
