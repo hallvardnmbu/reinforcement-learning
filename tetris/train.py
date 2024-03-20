@@ -56,7 +56,7 @@ environment.metadata["render_fps"] = 30
 # OPTIMIZER : A dictionary defining the optimizer used in training.
 # METRICS : The file path where the metrics are saved.
 
-GAMES = 25000
+GAMES = 22500
 SKIP = 4
 CHECKPOINT = 2500
 
