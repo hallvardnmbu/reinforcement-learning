@@ -8,7 +8,7 @@ Norwegian University of Life Sciences (NMBU)
 This repository contains theory, implementation and  examples for various reinforcement learning
 algorithms. Said algorithms are implemented in Python (using `PyTorch` and to some extent
 `ml-explore`), and are taught to play various games from the `gymnasium` library, ranging from
-simple to complex in the approximate order:
+simple to complex in approximate order:
 
 frozen-lake
   Tabular Q-learning
@@ -35,13 +35,13 @@ tetris (suboptimal results)
   * input space     [210, 160, 1]
   * action space    [5,]
 
+---
+
 The theory is presented in `report.pdf`, along with results and simplified implementation examples.
 
 The implementation, examples and results are presented in their corresponding directories. During
 training of the latter four games, Orion HPC (https://orion.nmbu.no) at the Norwegian University of
 Life Sciences (NMBU) provided computational resources.
-
----
 
 N.b., in order for the examples to access atari games from `gymnasium`, Python<=3.10 must be used.
 
@@ -64,5 +64,5 @@ Learning goals:
 Learning outcomes:
 
 - Be competent in modern deep learning situations
-  * Understand (and to some extent be able to reproduce) cutting-edge “artificial intelligence”
+  * Understand (and to some extent be able to reproduce) cutting-edge "artificial intelligence"
     models
